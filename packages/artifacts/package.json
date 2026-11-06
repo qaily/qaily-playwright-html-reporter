@@ -1,0 +1,8 @@
+{
+  "name": "@qaily/artifacts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./sigv4": "./src/sigv4.ts", "./credentials": "./src/credentials.ts" },
+  "dependencies": { "@qaily/contracts": "*" }
+}

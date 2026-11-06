@@ -1,0 +1,33 @@
+{
+  "name": "@qaily/shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@qaily/contracts": "*",
+    "@qaily/core": "*",
+    "@qaily/ui": "*",
+    "@qaily/page-monitoring": "*",
+    "@qaily/page-weekly": "*",
+    "@qaily/page-settings": "*",
+    "@qaily/theme-classic": "*",
+    "@qaily/theme-dark-ops": "*",
+    "@qaily/reporter": "*",
+    "lit": "~3.3.3",
+    "@qaily/page-monthly": "*",
+    "@qaily/page-issues": "*",
+    "@qaily/page-tests": "*",
+    "@qaily/artifacts": "*",
+    "@qaily/ai": "*",
+    "@qaily/page-heatmap": "*",
+    "@qaily/theme-chronoscope": "*"
+  },
+  "devDependencies": {
+    "vite": "~7.3.7"
+  }
+}

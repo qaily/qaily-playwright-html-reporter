@@ -1,0 +1,75 @@
+{
+  "name": "@qaily/playwright-html-reporter",
+  "version": "1.0.0",
+  "description": "Playwright reporter with a static, DuckDB-powered report: run history, weekly and monthly dashboards, issues, a coverage heat map, and attachments from S3-compatible storage.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qaily/qaily-playwright-html-reporter.git"
+  },
+  "homepage": "https://github.com/qaily/qaily-playwright-html-reporter#readme",
+  "bugs": {
+    "url": "https://github.com/qaily/qaily-playwright-html-reporter/issues"
+  },
+  "main": "dist/index.cjs",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "app"
+  ],
+  "bin": {
+    "qaily-report": "dist/cli.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "app:dev": "npm run dev -w @qaily/shell",
+    "app:build": "npm run build -w @qaily/shell",
+    "app:test": "vitest run",
+    "app:typecheck": "tsc -p packages/tsconfig.json",
+    "pkg:build": "npm run app:build && node scripts/build-package.mjs",
+    "prepublishOnly": "npm run app:typecheck && npm run app:test && npm run pkg:build",
+    "data:demo": "node packages/reporter/bin/qaily-report.mjs demo --out .qaily/data",
+    "data:build": "node packages/reporter/bin/qaily-report.mjs build --in .qaily/runs --out .qaily/data",
+    "data:sync": "node packages/reporter/bin/qaily-report.mjs sync --to .qaily/runs --out .qaily/data",
+    "data:pull": "node packages/reporter/bin/qaily-report.mjs pull --out .qaily/data",
+    "data:publish": "node packages/reporter/bin/qaily-report.mjs publish --out .qaily/data",
+    "site:serve": "node packages/reporter/bin/qaily-report.mjs serve --app .qaily/app --data .qaily/data --attachments .qaily/runs"
+  },
+  "keywords": [
+    "playwright",
+    "reporter",
+    "jsonl",
+    "html",
+    "duckdb",
+    "dashboard",
+    "test-results"
+  ],
+  "author": "Qaily",
+  "license": "MIT",
+  "dependencies": {
+    "@duckdb/node-api": "1.4.5-r.1",
+    "@qaily/playwright-jsonl-reporter": "^1.0.3-beta.0"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "~5.9.3",
+    "vitest": "~3.2.7"
+  },
+  "workspaces": [
+    "packages/*",
+    "packages/pages/*",
+    "packages/themes/*"
+  ]
+}

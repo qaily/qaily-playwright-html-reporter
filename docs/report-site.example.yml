@@ -1,0 +1,78 @@
+# Example: rebuild your report from the bucket and publish it to GitHub Pages.
+# Copy into the repository that hosts the report, next to a package.json with @qaily/playwright-html-reporter
+# in devDependencies and data/settings.json (bucket, region, key prefix; see docs/s3-artifacts.md).
+#
+# This is the Website data source. For the Bucket data source (Settings → Connections → Report data source):
+#   - Give the role the extra permissions in docs/s3-artifacts.md section 3.
+#   - Replace the sync step and everything after it with:
+#
+#     - run: |
+#         npx qaily-report pull --out data
+#         npx qaily-report sync --to runs --out data
+#         npx qaily-report publish --out data
+#
+#   - Deploy the site only when data/settings.json or the package version changes, copying just data/settings.json.
+name: Publish test report
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  repository_dispatch:
+    types: [test-run-finished]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write # OIDC for AWS and for Pages
+
+concurrency:
+  group: report-site
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 # brings data/settings.json and data/ai/ from the repo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.REPORT_READ_ROLE_ARN }} # s3:GetObject + s3:ListBucket on the prefix
+          aws-region: eu-north-1
+
+      - run: npm ci
+
+      # Run folders without attachments → rollups. Keeps the committed data/settings.json and data/ai/.
+      - run: npx qaily-report sync --to runs --out data
+
+      - name: Assemble site
+        run: |
+          cp -r node_modules/@qaily/playwright-html-reporter/app site
+          cp -r data site/data
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+
+# In the test workflow, after the tests, upload the run (attachments included) to S3. The .sync-complete marker goes
+# last: `build` skips synced run folders without it, so a half-uploaded run never reaches the report.
+#
+#   - uses: aws-actions/configure-aws-credentials@v4
+#     if: always()
+#     with: { role-to-assume: '${{ secrets.REPORT_WRITE_ROLE_ARN }}', aws-region: eu-north-1 }
+#   - if: always()
+#     run: |
+#       for dir in reports/data/*/; do
+#         run=$(basename "$dir")
+#         aws s3 sync "$dir" "s3://<bucket>/jsonl-report/$run"
+#         echo '{"complete":true}' | aws s3 cp - "s3://<bucket>/jsonl-report/$run/.sync-complete"
+#       done
+#   - uses: peter-evans/repository-dispatch@v3
+#     with: { event-type: test-run-finished, repository: <org>/<report-repo> }

@@ -1,0 +1,48 @@
+# Publishes a live demo of the report to GitHub Pages, built from synthetic data only.
+# The data is regenerated relative to today on every run, so the weekly schedule keeps the dashboards current.
+name: Demo site
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run app:build
+
+      - name: Synthetic demo data
+        run: |
+          node packages/reporter/bin/qaily-report.mjs demo --out .qaily/demo-data --runs 600 --days 75
+          cp -r .qaily/demo-data .qaily/app/data
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .qaily/app
+      - id: deployment
+        uses: actions/deploy-pages@v4

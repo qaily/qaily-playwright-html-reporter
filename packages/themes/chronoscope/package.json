@@ -1,0 +1,9 @@
+{
+  "name": "@qaily/theme-chronoscope",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@qaily/contracts": "*", "@qaily/ui": "*", "lit": "~3.3.3", "three": "0.186.1" },
+  "devDependencies": { "@types/three": "0.186.0" }
+}
