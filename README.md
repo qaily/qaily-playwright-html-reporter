@@ -20,6 +20,8 @@ month went, which issues keep coming back, and which parts of the product the te
 npm install --save-dev @qaily/playwright-html-reporter
 ```
 
+Or straight from GitHub (builds on install, about 20 s): `npm install --save-dev github:qaily/qaily-playwright-html-reporter`.
+
 Node 20 or newer. The reporter needs `@playwright/test`; step coverage labels need Playwright 1.58+.
 The commands that talk to a bucket (`sync`, `pull`, `publish`, and `serve` when it signs links) use the
 [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) and its login.

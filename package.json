@@ -40,7 +40,8 @@
     "data:sync": "node packages/reporter/bin/qaily-report.mjs sync --to .qaily/runs --out .qaily/data",
     "data:pull": "node packages/reporter/bin/qaily-report.mjs pull --out .qaily/data",
     "data:publish": "node packages/reporter/bin/qaily-report.mjs publish --out .qaily/data",
-    "site:serve": "node packages/reporter/bin/qaily-report.mjs serve --app .qaily/app --data .qaily/data --attachments .qaily/runs"
+    "site:serve": "node packages/reporter/bin/qaily-report.mjs serve --app .qaily/app --data .qaily/data --attachments .qaily/runs",
+    "prepare": "node scripts/prepare.mjs"
   },
   "keywords": [
     "playwright",
