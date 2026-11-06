@@ -29,7 +29,8 @@ set in Settings → **For the team** → Connections → **Report data source**:
 
 Use **Website** when the site can be limited to the right people, or the data isn't sensitive: it is simpler, and viewers need
 no keys for dashboards. Use **Bucket** when the data must stay private and access to the site can't be limited.
-`qaily-report serve` always reads its own data folder, whichever source is set. See [Bucket data source](#7-bucket-data-source).
+`qaily-report serve` always reads its own data folder, whichever source is set. The report header shows which source a page uses
+(Website data, Website data · S3 files, Bucket data or Local server); hover it for details. See [Bucket data source](#7-bucket-data-source).
 
 ## 1. Configure the bucket in the report
 

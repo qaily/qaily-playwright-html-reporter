@@ -228,6 +228,20 @@ export class QailyShell extends LitElement {
     this.services.settings.setPersonal('display.colorScheme', next);
   }
 
+  /** Which way the report gets its data: a small label in the header, with the details on hover. */
+  private modeNote() {
+    const mode = this.services.artifacts.status().mode;
+    const [label, title] =
+      mode === 'local'
+        ? ['Local server', 'Opened through qaily-report serve: report data from the local folder, attachments from local files first, then S3.']
+        : this.services.data.readsFromBucket
+          ? ['Bucket data', 'Bucket data source: dashboards, run data and attachments are all read from S3 with signed links. The site holds only the app and settings.json.']
+          : mode === 'browser'
+            ? ['Website data · S3 files', 'Website data source: dashboard and run data are published with this site; screenshots, traces and other attachments are read from S3.']
+            : ['Website data', 'Everything, attachments included, is published with this site. No bucket is configured.'];
+    return html`<span class="muted mode" title=${title}>${label}</span>`;
+  }
+
   render() {
     const used = new Set(this.host.page?.filters ?? []);
     const filters = this.filters;
@@ -244,6 +258,7 @@ export class QailyShell extends LitElement {
           )}
         </nav>
         <div class="tools">
+          ${this.modeNote()}
           ${this.catalog?.latestRunAt
             ? html`<span class="muted fresh" title="Newest run in the data">Latest run ${formatRelative(this.catalog.latestRunAt, new Date())}</span>`
             : nothing}
@@ -359,6 +374,14 @@ export class QailyShell extends LitElement {
       .fresh {
         font-size: 0.85rem;
       }
+      .mode {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border: 1px solid var(--q-border);
+        border-radius: 999px;
+        white-space: nowrap;
+        cursor: help;
+      }
       .icon {
         width: 34px;
         padding: 4px;
@@ -426,7 +449,8 @@ export class QailyShell extends LitElement {
         nav a span {
           display: none;
         }
-        .fresh {
+        .fresh,
+        .mode {
           display: none;
         }
       }
