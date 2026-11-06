@@ -50,6 +50,9 @@ reports/data/<ISO time>_<commit>_<n>/
 |---|---|---|
 | `outputDir` | `'./reports/data'` | Where run folders are written |
 | `archived` | `true` | Write `.jsonl.gz` (true) or plain `.jsonl` (false) |
+| `environment` | none | Environment name, e.g. `'staging'`; lanes can match it |
+| `category` | none | What kind of run this is, e.g. `'ui:web'`; lanes can match it |
+| `tag` | none | Suite name shown on the run, e.g. `'@regression'` |
 | `coverage.levels` | `['Component', 'Test Name', 'Feature', 'Area']` | Step annotation types used as the heat map's four levels |
 | `includeAttachmentChecksums` | `false` | SHA-256 of each attachment |
 | `maxErrorMessageLength` | `500` | Error messages are cut at this length |
