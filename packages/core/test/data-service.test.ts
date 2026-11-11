@@ -45,6 +45,7 @@ describe('where data is read from', () => {
     const signed: string[] = [];
     const calls = stubFetch((url) => (url.includes('catalog') ? json(CATALOG) : json([])));
     const data = new DataService(DATA_URL, {
+      scope: 'b/data',
       keepOnDevice: () => false,
       signedUrl: async (path) => {
         signed.push(path);
@@ -60,7 +61,7 @@ describe('where data is read from', () => {
   it('asks for credentials, then works once they exist', async () => {
     let connected = false;
     stubFetch(() => json(CATALOG));
-    const data = new DataService(DATA_URL, { keepOnDevice: () => false, signedUrl: async (path) => (connected ? `https://bucket.test/${path}` : null) });
+    const data = new DataService(DATA_URL, { scope: 'b/data', keepOnDevice: () => false, signedUrl: async (path) => (connected ? `https://bucket.test/${path}` : null) });
     await expect(data.catalog()).rejects.toThrow(DataAccessError);
     expect(data.accessProblem).toBeInstanceOf(DataAccessError);
     connected = true;
@@ -71,7 +72,7 @@ describe('where data is read from', () => {
   it('keeps the loaded catalog when access ends, and reports the problem', async () => {
     let connected = true;
     stubFetch(() => json(CATALOG));
-    const data = new DataService(DATA_URL, { keepOnDevice: () => false, signedUrl: async (path) => (connected ? `https://bucket.test/${path}` : null) });
+    const data = new DataService(DATA_URL, { scope: 'b/data', keepOnDevice: () => false, signedUrl: async (path) => (connected ? `https://bucket.test/${path}` : null) });
     await data.catalog();
     connected = false;
     await expect(data.catalog({ refresh: true })).resolves.toMatchObject({ runCount: 1 });
@@ -89,7 +90,7 @@ describe('where data is read from', () => {
     vi.stubGlobal('caches', { open: async () => cache, delete: async () => stored.clear() });
     vi.stubGlobal('location', { origin: 'https://example.test' });
     const calls = stubFetch((url) => (url.includes('catalog') ? json(CATALOG) : json([])));
-    const open = (keep: boolean) => new DataService(DATA_URL, { keepOnDevice: () => keep, signedUrl: async (path) => `https://bucket.test/${path}` });
+    const open = (keep: boolean) => new DataService(DATA_URL, { scope: 'b/data', keepOnDevice: () => keep, signedUrl: async (path) => `https://bucket.test/${path}` });
     const rollupReads = () => calls.filter((u) => u.includes('rollups/')).length;
 
     await open(false).runs(range);
@@ -109,7 +110,7 @@ describe('where data is read from', () => {
 
   it('explains a refused read without showing the signed link', async () => {
     stubFetch(() => new Response('denied', { status: 403 }));
-    const data = new DataService(DATA_URL, { keepOnDevice: () => false, signedUrl: async (path) => `https://bucket.test/${path}?X-Amz-Signature=secret` });
+    const data = new DataService(DATA_URL, { scope: 'b/data', keepOnDevice: () => false, signedUrl: async (path) => `https://bucket.test/${path}?X-Amz-Signature=secret` });
     const err = await data.catalog().catch((e: Error) => e);
     expect(err).toBeInstanceOf(DataAccessError);
     expect((err as Error).message).toContain('403');

@@ -83,3 +83,24 @@ export function resolveSettings(
   }
   return { settings, sources, warnings };
 }
+
+/** Paths of the bucket location: where the report reads run folders and report data from. */
+export const LOCATION_PATHS = ['connections.s3.dataSource', 'connections.s3.prefix', 'connections.s3.dataPrefix'] as const;
+
+/** `top` over `base`, one settings field at a time: a field set in `top` replaces the whole field in `base`. */
+export function overlayLayer(base: SettingsLayer, top: SettingsLayer): SettingsLayer {
+  let out: SettingsLayer = structuredClone(base);
+  for (const field of SETTINGS_FIELDS) {
+    const value = getPath(top, field.path);
+    if (value !== undefined) out = setPath(out, field.path, structuredClone(value));
+  }
+  return out;
+}
+
+/**
+ * Team settings as stored with the report data in a bucket: without the bucket connection, so a file in the bucket
+ * can never point the report somewhere else.
+ */
+export function withoutBucketConnection(layer: SettingsLayer): SettingsLayer {
+  return setPath(layer, 'connections.s3', undefined);
+}

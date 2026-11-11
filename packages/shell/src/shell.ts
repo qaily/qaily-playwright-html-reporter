@@ -1,4 +1,4 @@
-import type { Catalog, Filters, PageContext, RegistryInfo, ResolvedSettings, RouteParams, ThemeInfo } from '@qaily/contracts';
+import { LOCATION_PATHS, type Catalog, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type Settings, type ThemeInfo } from '@qaily/contracts';
 import {
   DataAccessError,
   FILTER_PARAMS,
@@ -22,6 +22,20 @@ import { LitElement, baseStyles, css, html, nothing, repeat } from '@qaily/ui';
 import { PageHost, type HostState } from './page-host.ts';
 import { PAGES, type PageEntry } from './pages.ts';
 
+/** Where the report reads its data from, fixed when the page loads. */
+export type DataLocation = Pick<Settings['connections']['s3'], 'dataSource' | 'prefix' | 'dataPrefix'> & {
+  /** The folder the viewer chose personally, for the header; null when the page loaded the report's own location. */
+  personal: string | null;
+};
+
+/** The personal folder to name in the header: the data folder first, since a report reading from the bucket shows that. */
+export function personalFolder(s3: Settings['connections']['s3'], sources: ResolvedSettings['sources']): string | null {
+  const mine = (p: string) => sources[p] === 'personal';
+  if (!LOCATION_PATHS.some(mine)) return null;
+  const folder = s3.dataSource === 'bucket' && (mine('connections.s3.dataPrefix') || !mine('connections.s3.prefix')) ? s3.dataPrefix : s3.prefix;
+  return folder.replace(/^\/+|\/+$/g, '') || '(bucket root)';
+}
+
 export interface ShellServices {
   data: DataService;
   settings: SettingsService;
@@ -31,6 +45,7 @@ export interface ShellServices {
   ai: AiService;
   themes: ThemeManager;
   router: Router;
+  location: DataLocation;
 }
 
 interface Toast {
@@ -228,6 +243,27 @@ export class QailyShell extends LitElement {
     this.services.settings.setPersonal('display.colorScheme', next);
   }
 
+  /** The viewer's own bucket folder this page loaded, set under Settings → For me; null when it loaded the report's own. */
+  private personalLocation(): string | null {
+    return this.services.location.personal;
+  }
+
+  /** True when the location in the settings is no longer the one this page loaded. */
+  private locationChanged(): boolean {
+    const now = this.settingsNow.connections.s3;
+    return LOCATION_PATHS.some((p) => {
+      const key = p.split('.').pop() as 'dataSource' | 'prefix' | 'dataPrefix';
+      return now[key] !== this.services.location[key];
+    });
+  }
+
+  /** Loads the page again for a new data location. Cached rollups of the old one are dropped first. */
+  private async reloadForLocation(reset: boolean): Promise<void> {
+    if (reset) this.services.settings.setPersonalMany(Object.fromEntries(LOCATION_PATHS.map((p) => [p, undefined])));
+    await clearCachedRollups();
+    window.location.reload();
+  }
+
   /** Which way the report gets its data: a small label in the header, with the details on hover. */
   private modeNote() {
     const mode = this.services.artifacts.status().mode;
@@ -239,7 +275,10 @@ export class QailyShell extends LitElement {
           : mode === 'browser'
             ? ['Website data · S3 files', 'Website data source: dashboard and run data are published with this site; screenshots, traces and other attachments are read from S3.']
             : ['Website data', 'Everything, attachments included, is published with this site. No bucket is configured.'];
-    return html`<span class="muted mode" title=${title}>${label}</span>`;
+    const mine = this.personalLocation();
+    return mine
+      ? html`<span class="muted mode mine" title=${`${title} You are looking at your own location: ${mine}. Reset it in the bar below the header.`}>${label} · ${mine}</span>`
+      : html`<span class="muted mode" title=${title}>${label}</span>`;
   }
 
   render() {
@@ -295,6 +334,17 @@ export class QailyShell extends LitElement {
               : nothing}
           </div>`
         : nothing}
+      ${this.locationChanged()
+        ? html`<div class="access" role="status">
+            <span>The data location changed. Reload to see the data from there.</span>
+            <button @click=${() => this.reloadForLocation(false)}>Reload</button>
+          </div>`
+        : this.personalLocation()
+          ? html`<div class="access mine" role="status">
+              <span>You are looking at <b>${this.personalLocation()}</b>, your own setting, not this report's usual data.</span>
+              <button @click=${() => this.reloadForLocation(true)}>Reset</button>
+            </div>`
+          : nothing}
       ${this.dataAccess
         ? html`<div class="access" role="alert">
             <span>${this.dataAccess}${this.catalog ? ' Data already loaded stays on screen.' : ''}</span>
@@ -381,6 +431,13 @@ export class QailyShell extends LitElement {
         border-radius: 999px;
         white-space: nowrap;
         cursor: help;
+      }
+      .mode.mine {
+        border-color: var(--q-accent);
+        color: var(--q-accent);
+      }
+      .access.mine {
+        border-left: 4px solid var(--q-accent);
       }
       .icon {
         width: 34px;

@@ -82,7 +82,9 @@ writes 120 synthetic runs, with heat map rules and a planned matrix.
 
 Everything else is set on the report's **Settings** page: lanes, health thresholds, theme, the bucket, heat map rules.
 **Save for team** writes `report-data/settings.json` when the report is opened through `serve` (on GitHub Pages it
-can commit the file instead, see [docs/ai.md](docs/ai.md#drafts-and-publishing)).
+can commit the file instead, see [docs/ai.md](docs/ai.md#drafts-and-publishing)). A report that reads its data from a
+bucket keeps team settings there instead, as `team-settings.json` next to the data (see
+[docs/s3-artifacts.md](docs/s3-artifacts.md#team-settings-in-the-bucket)).
 
 ## 3. Share it
 
@@ -112,7 +114,7 @@ the bucket, CORS and IAM setup for AWS, Google Cloud Storage and MinIO, are in [
 | `build --in <runs> --out <data> [--force]` | Turns run folders into the report's data; `--force` rebuilds every month |
 | `serve --data <data> [--attachments <runs>] [--aws-profile p] [--port 4173]` | Local server; signs bucket links with this machine's login |
 | `sync --to <runs> --out <data> [--with-attachments]` | Downloads run folders from the bucket (attachments only if asked), then builds |
-| `pull` / `publish --out <data>` | Bucket data source: fetch the last published data / upload the new one |
+| `pull` / `publish --out <data> [--team-settings seed\|replace\|skip]` | Bucket data source: fetch the last published data / upload the new one, and team settings when the bucket has none yet |
 | `demo --out <data> [--runs 120] [--days 30]` | Synthetic runs, for trying the report |
 | `catalog --csv <matrix.csv> --out <data>/coverage-catalog.json` | Planned coverage matrix for the heat map |
 

@@ -325,10 +325,14 @@ class SettingsPage extends LitElement {
             </div>
             <p class="muted">
               ${this.mode === 'personal'
-                ? 'Changes apply at once and are saved in this browser only.'
-                : api.canSaveTeam
-                  ? 'Edit the shared defaults (data/settings.json), then save. Personal settings still win for each viewer.'
-                  : 'This report is read-only, so team settings cannot be saved here. Run it with `qaily-report serve` to save them, or export and commit data/settings.json.'}
+                ? 'Changes apply at once and are saved in this browser only, for this report.'
+                : api.teamTarget === 'data'
+                  ? api.canSaveTeam
+                    ? `Team settings are stored with the report data (team-settings.json in ${api.teamWriterLabel}). Saving needs a key that can write there; everyone viewing this data gets the change on their next load. The bucket connection comes from the site and isn't saved there. Personal settings still win for each viewer.`
+                    : 'Team settings are stored with the report data in the bucket. Connect credentials that can write to the data folder (Tokens, below) to save them.'
+                  : api.canSaveTeam
+                    ? 'Edit the shared defaults (data/settings.json), then save. Personal settings still win for each viewer.'
+                    : 'This report is read-only, so team settings cannot be saved here. Run it with `qaily-report serve` to save them, or export and commit data/settings.json.'}
             </p>
             <div class="top-actions">
               ${this.mode === 'team'

@@ -4,6 +4,8 @@ import {
   resolveSettings,
   setPath,
   getPath,
+  overlayLayer,
+  withoutBucketConnection,
   type ResolvedSettings,
   type Settings,
   type SettingsApi,
@@ -13,9 +15,20 @@ import { readJson, remove, writeJson } from './storage.ts';
 
 export const PERSONAL_SETTINGS_KEY = 'qaily.settings.v1';
 
+/**
+ * Personal settings key for the report at this path. Reports on one host (e.g. several on github.io) share
+ * localStorage, so each keeps its own personal settings, such as a different bucket location.
+ */
+export function personalSettingsKey(reportPath: string): string {
+  const path = reportPath.replace(/\/+$/, '') || '/';
+  return path === '/' ? PERSONAL_SETTINGS_KEY : `${PERSONAL_SETTINGS_KEY}:${path}`;
+}
+
 /** Writes the team layer somewhere everyone reads it from. */
 export interface TeamSettingsWriter {
   readonly label: string;
+  /** Which team layer it writes: the site's settings.json (default), or team settings stored with the report data. */
+  readonly target?: 'site' | 'data';
   /** False when the writer can't be used right now (e.g. no token yet). Default: always available. */
   available?(): boolean;
   save(layer: SettingsLayer): Promise<void>;
@@ -83,27 +96,56 @@ export class SettingsService implements SettingsApi {
   private listeners = new Set<(r: ResolvedSettings) => void>();
   private _resolved: ResolvedSettings;
   private _personal: SettingsLayer;
-  private _team: SettingsLayer;
-  private readonly writer: TeamSettingsWriter | null;
+  /** settings.json on the site. */
+  private _site: SettingsLayer;
+  /** team-settings.json with the report data in the bucket; null when there is none (or it isn't loaded yet). */
+  private _data: SettingsLayer | null = null;
+  private writer: TeamSettingsWriter | null;
   private readonly defaults: Settings;
+  private readonly storageKey: string;
 
-  constructor(team: SettingsLayer, writer: TeamSettingsWriter | null, defaults: Settings = DEFAULT_SETTINGS) {
-    this._team = team;
+  constructor(
+    team: SettingsLayer,
+    writer: TeamSettingsWriter | null,
+    defaults: Settings = DEFAULT_SETTINGS,
+    storageKey: string = PERSONAL_SETTINGS_KEY,
+  ) {
+    this._site = team;
     this.writer = writer;
     this.defaults = defaults;
-    this._personal = readJson<SettingsLayer>('local', PERSONAL_SETTINGS_KEY) ?? {};
+    this.storageKey = storageKey;
+    // A report that used the shared key before keeps those settings until it saves its own.
+    this._personal = readJson<SettingsLayer>('local', storageKey) ?? readJson<SettingsLayer>('local', PERSONAL_SETTINGS_KEY) ?? {};
     this._resolved = this.resolve();
   }
 
   get resolved(): ResolvedSettings {
     return this._resolved;
   }
+  /** The team layer in effect: the site's settings, with the bucket's team settings over them. */
   get team(): SettingsLayer {
-    return this._team;
+    return this._data ? overlayLayer(this._site, this._data) : this._site;
   }
   get personal(): SettingsLayer {
     return this._personal;
   }
+  /** True when team settings stored with the report data are applied. */
+  get hasDataTeamLayer(): boolean {
+    return this._data !== null;
+  }
+
+  /** Chooses where "Save for team" writes, once the report knows where its data comes from. */
+  setWriter(writer: TeamSettingsWriter | null): void {
+    this.writer = writer;
+  }
+
+  /** Team settings stored with the report data (bucket), over the site's. Null removes them. */
+  setDataLayer(layer: SettingsLayer | null): void {
+    if (JSON.stringify(layer) === JSON.stringify(this._data)) return;
+    this._data = layer;
+    this.update();
+  }
+
   get canSaveTeam(): boolean {
     return this.writer !== null && (this.writer.available?.() ?? true);
   }
@@ -111,29 +153,41 @@ export class SettingsService implements SettingsApi {
   get teamWriterLabel(): string | null {
     return this.writer?.label ?? null;
   }
+
+  /** Where "Save for team" writes: the site's settings.json, or team-settings.json with the report data. */
+  get teamTarget(): 'site' | 'data' | null {
+    return this.writer ? (this.writer.target ?? 'site') : null;
+  }
   get settings(): Settings {
     return this._resolved.settings;
   }
 
   /** value === undefined clears the personal override. */
   setPersonal(path: string, value: unknown): void {
-    if (!fieldByPath(path)) throw new Error(`Unknown setting: ${path}`);
-    this._personal = setPath(this._personal, path, value);
-    if (Object.keys(this._personal).length === 0) remove('local', PERSONAL_SETTINGS_KEY);
-    else writeJson('local', PERSONAL_SETTINGS_KEY, this._personal);
-    this.update();
+    this.setPersonalMany({ [path]: value });
+  }
+
+  /** Several personal values in one update, e.g. resetting the bucket location. */
+  setPersonalMany(values: Record<string, unknown>): void {
+    let next = this._personal;
+    for (const [path, value] of Object.entries(values)) {
+      if (!fieldByPath(path)) throw new Error(`Unknown setting: ${path}`);
+      next = setPath(next, path, value);
+    }
+    this.storePersonal(next);
   }
 
   async saveTeam(layer: SettingsLayer): Promise<void> {
     if (!this.writer) throw new Error('This report is read-only: no team settings writer is available');
     await this.writer.save(layer);
-    this._team = layer;
+    if (this.writer.target === 'data') this._data = withoutBucketConnection(layer);
+    else this._site = layer;
     this.update();
   }
 
   exportJson(): string {
     // Only non-secret settings exist in these layers; secrets live in SecretStore.
-    return JSON.stringify({ team: this._team, personal: this._personal }, null, 2);
+    return JSON.stringify({ team: this.team, personal: this._personal }, null, 2);
   }
 
   async importJson(json: string, target: 'personal' | 'team'): Promise<void> {
@@ -141,9 +195,7 @@ export class SettingsService implements SettingsApi {
     const layer = (parsed.team || parsed.personal ? parsed[target] : parsed) ?? {};
     if (typeof layer !== 'object' || Array.isArray(layer)) throw new Error('Expected a settings object');
     if (target === 'team') return this.saveTeam(layer);
-    this._personal = layer;
-    writeJson('local', PERSONAL_SETTINGS_KEY, layer);
-    this.update();
+    this.storePersonal(layer);
   }
 
   subscribe(fn: (r: ResolvedSettings) => void): () => void {
@@ -153,11 +205,19 @@ export class SettingsService implements SettingsApi {
 
   /** The value a field would have without the personal layer, for "reset to team". */
   teamOrDefault(path: string): unknown {
-    return getPath(resolveSettings(this.defaults, this._team, {}).settings, path);
+    return getPath(resolveSettings(this.defaults, this.team, {}).settings, path);
+  }
+
+  private storePersonal(layer: SettingsLayer): void {
+    this._personal = layer;
+    // A report with its own key keeps even an empty layer, so the shared key's settings don't come back.
+    if (Object.keys(layer).length === 0 && this.storageKey === PERSONAL_SETTINGS_KEY) remove('local', this.storageKey);
+    else writeJson('local', this.storageKey, layer);
+    this.update();
   }
 
   private resolve(): ResolvedSettings {
-    const resolved = resolveSettings(this.defaults, this._team, this._personal);
+    const resolved = resolveSettings(this.defaults, this.team, this._personal);
     for (const w of resolved.warnings) console.warn(`[qaily settings] ${w}`);
     return resolved;
   }

@@ -145,8 +145,12 @@ export interface SettingsApi {
   readonly personal: SettingsLayer;
   /** Whether "Save for team" is available (local server or GitHub writer configured). */
   readonly canSaveTeam: boolean;
+  /** Where "Save for team" writes: the site's settings.json, or team-settings.json with the report data in the bucket. */
+  readonly teamTarget: 'site' | 'data' | null;
+  /** Where saving goes, for people, e.g. "bucket my-bucket/qaily-data". */
+  readonly teamWriterLabel: string | null;
   setPersonal(path: string, value: unknown): void;
-  /** Writes the team layer to data/settings.json. */
+  /** Writes the team layer where teamTarget says. */
   saveTeam(layer: SettingsLayer): Promise<void>;
   exportJson(): string;
   importJson(json: string, target: 'personal' | 'team'): Promise<void>;

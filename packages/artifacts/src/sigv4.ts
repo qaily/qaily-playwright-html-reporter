@@ -1,4 +1,4 @@
-// AWS Signature V4 presigned GET URLs for S3, on WebCrypto only.
+// AWS Signature V4 presigned URLs for S3 (GET, and PUT for team settings), on WebCrypto only.
 // The same file runs in the browser and in Node 22, with no AWS SDK.
 
 export interface PresignOptions {
@@ -19,6 +19,8 @@ export interface PresignOptions {
   endpoint?: string;
   /** Put the bucket in the path (host/bucket/key) instead of the host name. MinIO usually needs this. */
   pathStyle?: boolean;
+  /** Default GET. A PUT link uploads the request body; only the host header is signed. */
+  method?: 'GET' | 'PUT';
 }
 
 const encoder = new TextEncoder();
@@ -67,7 +69,11 @@ export function amzDate(d: Date): string {
   return d.toISOString().replace(/[:-]|\.\d{3}/g, '');
 }
 
-export async function presignS3Get(o: PresignOptions): Promise<string> {
+export function presignS3Get(o: PresignOptions): Promise<string> {
+  return presignS3({ ...o, method: 'GET' });
+}
+
+export async function presignS3(o: PresignOptions): Promise<string> {
   const now = o.now ?? new Date();
   const expires = Math.min(Math.max(1, Math.floor(o.expiresIn ?? 600)), 604_800);
   const datetime = amzDate(now);
@@ -96,7 +102,7 @@ export async function presignS3Get(o: PresignOptions): Promise<string> {
     .map((k) => `${uriEncode(k)}=${uriEncode(params[k])}`)
     .join('&');
 
-  const canonicalRequest = ['GET', path, query, `host:${host}`, '', 'host', 'UNSIGNED-PAYLOAD'].join('\n');
+  const canonicalRequest = [o.method ?? 'GET', path, query, `host:${host}`, '', 'host', 'UNSIGNED-PAYLOAD'].join('\n');
   const stringToSign = ['AWS4-HMAC-SHA256', datetime, scope, await sha256Hex(canonicalRequest)].join('\n');
 
   let key: ArrayBuffer = await hmac(encoder.encode(`AWS4${o.secretAccessKey}`), date);

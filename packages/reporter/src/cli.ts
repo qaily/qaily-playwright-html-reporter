@@ -12,8 +12,11 @@ const USAGE = `Usage:
   qaily-report sync  --to <run folders> --out <data dir> [--bucket b --region r --prefix p --endpoint url] [--aws-profile name] [--with-attachments]
   qaily-report pull    --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
   qaily-report publish --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
+                       [--team-settings seed|replace|skip]
 
   pull and publish are for the Bucket data source. pull first, so build skips months that didn't change; publish uploads the result.
+  publish also uploads <data dir>/settings.json, without the bucket connection, as team-settings.json in the data folder: only
+  when there is none yet (seed, the default), so team settings saved from the report are kept; replace overwrites them.
 
   serve also takes --aws-profile; it signs S3 artifact URLs with that AWS login (default: env keys, then the default profile).
   Without --app, serve uses the report that ships with the npm package, or .qaily/app in a checkout of the repo.`;
@@ -49,6 +52,7 @@ export async function main(argv: string[]): Promise<void> {
       'aws-profile': { type: 'string' },
       'with-attachments': { type: 'boolean' },
       csv: { type: 'string' },
+      'team-settings': { type: 'string' },
     },
   });
   const log = (msg: string) => console.log(`[qaily] ${msg}`);
@@ -148,7 +152,9 @@ export async function main(argv: string[]): Promise<void> {
         prefix: values.prefix ?? team.prefix,
         dataPrefix: values['data-prefix'] ?? team.dataPrefix,
       };
-      await (command === 'pull' ? pull : publish)({ s3, dataDir: values.out, profile: values['aws-profile'], log });
+      const teamSettings = values['team-settings'] ?? 'seed';
+      if (teamSettings !== 'seed' && teamSettings !== 'replace' && teamSettings !== 'skip') throw new Error('--team-settings must be seed, replace or skip');
+      await (command === 'pull' ? pull : publish)({ s3, dataDir: values.out, profile: values['aws-profile'], teamSettings, log });
       log(command === 'pull' ? 'Pulled the published report data' : 'Published the report data');
       return;
     }

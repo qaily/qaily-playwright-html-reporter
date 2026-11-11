@@ -146,7 +146,7 @@ describe('publish and pull', () => {
     const { publishArgs } = await import('../src/sync.ts');
     const [upload, catalog] = publishArgs({ s3, dataDir: 'data', profile: 'qa' });
     expect(upload.slice(0, 4)).toEqual(['s3', 'sync', 'data', 's3://acme/qaily-data/']);
-    for (const file of ['settings.json', 'ai/*', 'catalog.json']) expect(upload[upload.indexOf(file) - 1]).toBe('--exclude');
+    for (const file of ['settings.json', 'ai/*', 'team-settings.json', 'catalog.json']) expect(upload[upload.indexOf(file) - 1]).toBe('--exclude');
     expect(upload).not.toContain('--delete');
     expect(catalog.slice(0, 4)).toEqual(['s3', 'cp', 'data/catalog.json', 's3://acme/qaily-data/catalog.json']);
     expect(catalog).toContain('--endpoint-url');
@@ -159,7 +159,21 @@ describe('publish and pull', () => {
     expect(args.slice(0, 4)).toEqual(['s3', 'sync', 's3://acme/qaily-data/', 'data']);
     expect(args).toContain('settings.json');
     expect(args).toContain('ai/*');
+    expect(args).toContain('team-settings.json');
     expect(args).not.toContain('--delete');
+  });
+
+  it('publishes team settings without the bucket connection, and only when there are any', async () => {
+    const { teamSettingsForBucket } = await import('../src/sync.ts');
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'qaily-test-'));
+    expect(teamSettingsForBucket(dir)).toBeNull();
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ version: 1, connections: { s3 } }));
+    expect(teamSettingsForBucket(dir)).toBeNull();
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ lanes: [{ id: 'm', label: 'M', match: {} }], connections: { s3 } }));
+    expect(teamSettingsForBucket(dir)).toEqual({ lanes: [{ id: 'm', label: 'M', match: {} }] });
   });
 
   it('refuses a data folder that overlaps the run folders', async () => {

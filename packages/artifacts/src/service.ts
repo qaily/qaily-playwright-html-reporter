@@ -8,7 +8,7 @@ import type {
   Settings,
 } from '@qaily/contracts';
 import { isExpired, isTemporary, maskKeyId, parseCredentials, type AwsCredentials } from './credentials.ts';
-import { presignS3Get } from './sigv4.ts';
+import { presignS3 } from './sigv4.ts';
 
 // Attachment links are signed when a test opens and may be used much later, by a lazy image or a trace link.
 const ATTACHMENT_LINK_SECONDS = 3600;
@@ -89,19 +89,23 @@ export class ArtifactService implements ArtifactsApi {
     return url;
   }
 
-  /** Signed URL of a report data file (path relative to the data folder), or null when credentials are needed first. */
-  async dataFileUrl(path: string): Promise<string | null> {
+  /**
+   * Signed URL of a report data file (path relative to the data folder), or null when credentials are needed first.
+   * A PUT link uploads the file, for team settings stored with the data.
+   */
+  async dataFileUrl(path: string, method: 'GET' | 'PUT' = 'GET'): Promise<string | null> {
     const clean = path.replace(/^\/+/, '');
     if (clean.split('/').includes('..')) throw new Error('Invalid report data path');
     const creds = this.loadCredentials();
     if (!creds) return null;
     const prefix = this.opts.s3().dataPrefix.replace(/^\/+|\/+$/g, '');
-    return this.sign(creds, [prefix, clean].filter(Boolean).join('/'), DATA_LINK_SECONDS);
+    return this.sign(creds, [prefix, clean].filter(Boolean).join('/'), DATA_LINK_SECONDS, undefined, method);
   }
 
-  private sign(creds: AwsCredentials, key: string, expiresIn: number, downloadName?: string): Promise<string> {
+  private sign(creds: AwsCredentials, key: string, expiresIn: number, downloadName?: string, method: 'GET' | 'PUT' = 'GET'): Promise<string> {
     const s3 = this.opts.s3();
-    return presignS3Get({
+    return presignS3({
+      method,
       bucket: s3.bucket,
       region: s3.region,
       endpoint: s3.endpoint,

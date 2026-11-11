@@ -8,6 +8,8 @@ export interface BucketData {
   signedUrl(path: string): Promise<string | null>;
   /** True when rollups may be stored on this device: the viewer chose to remember their credentials here. */
   keepOnDevice(): boolean;
+  /** Names the data location, e.g. "bucket/folder", so cached rollups of different locations stay apart. */
+  scope: string;
 }
 
 /** The bucket can't be read right now. The message says what the viewer can do about it. */
@@ -54,7 +56,7 @@ export class DataService implements DataApi {
       const next = this.fetchJson<Catalog>('catalog.json', 'no-cache').then((catalog) => {
         this._accessProblem = null;
         if (this.bucket?.keepOnDevice()) {
-          void pruneCachedRollups(catalog.months.flatMap((m) => Object.values(m.files).filter(Boolean).map((path) => ({ path: path as string, hash: m.hash }))));
+          void pruneCachedRollups(this.bucket.scope, catalog.months.flatMap((m) => Object.values(m.files).filter(Boolean).map((path) => ({ path: path as string, hash: m.hash }))));
         }
         return catalog;
       });
@@ -177,12 +179,12 @@ export class DataService implements DataApi {
   /** A rollup from this device when allowed and present, otherwise from the bucket. */
   private async rollupBytes(path: string, hash: string): Promise<Uint8Array> {
     const keep = this.bucket!.keepOnDevice();
-    const hit = keep ? await readCachedRollup(path, hash) : null;
+    const hit = keep ? await readCachedRollup(this.bucket!.scope, path, hash) : null;
     if (hit) return hit;
     const res = await this.fromBucket(path);
     if (!res.ok) throw new Error(`Could not load ${path} (${res.status})`);
     const bytes = new Uint8Array(await res.arrayBuffer());
-    if (keep) await writeCachedRollup(path, hash, bytes);
+    if (keep) await writeCachedRollup(this.bucket!.scope, path, hash, bytes);
     return bytes;
   }
 

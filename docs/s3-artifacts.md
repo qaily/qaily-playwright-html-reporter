@@ -172,5 +172,45 @@ npx qaily-report publish --out data            # upload changed files, catalog.j
   links last 10 minutes and are used immediately.
 - **On the device:** with **Remember on this device**, rollups are also kept in the browser so pages load faster. With the other
   choices, report data stays in memory only. Forgetting credentials, or their expiry, clears what is stored.
-- **Not moved:** `data/settings.json` and AI notes in `data/ai/` stay on the site. AI notes can quote test errors, and saving one or a
-  team setting still needs a site redeploy.
+- **Not moved:** `data/settings.json` (it says where the bucket is) and AI notes in `data/ai/` stay on the site. AI notes can
+  quote test errors, and saving one still needs a site redeploy.
+
+### Team settings in the bucket
+
+Lanes, thresholds, heat map rules and the other team settings can live with the data, as `team-settings.json` in the data
+folder. After the viewer connects, the report applies them over the site's `settings.json`. They never contain the bucket
+connection, so a file in the bucket can't send the report somewhere else.
+
+- **First copy:** `publish` uploads `data/settings.json`, without the bucket connection, as `team-settings.json` when the
+  data folder has none yet. After that it leaves the file alone, so changes saved from the report are kept.
+  `--team-settings replace` overwrites it from `data/settings.json`; `--team-settings skip` never touches it.
+- **Saving from the report:** Settings → For the team → **Save for team** writes `team-settings.json` with the viewer's key.
+  Everyone viewing that data gets the change on their next load, with no redeploy. It needs:
+  - a key that can write the file (`s3:PutObject` on `<data prefix>/team-settings.json`); read-only keys can still view;
+  - `PUT` in the bucket's CORS rules, with the `Content-Type` header (below);
+  - preferably **object versioning** on the bucket, so a bad save can be rolled back. Saves have no review step.
+- **Two people at once:** before saving, the report checks that the file is still what it loaded. If someone else saved in
+  the meantime, it stops and asks you to reload.
+
+CORS for saving, in addition to the rules in section 2 (AWS format; for Google Cloud Storage add `PUT` to `method` and
+`Content-Type` to `responseHeader`):
+
+```json
+{
+  "AllowedMethods": ["PUT"],
+  "AllowedOrigins": ["https://<your-org>.github.io"],
+  "AllowedHeaders": ["Content-Type"],
+  "MaxAgeSeconds": 3000
+}
+```
+
+### Looking at another data folder
+
+**Report data key prefix**, **S3 key prefix** and **Report data source** can also be set under Settings → For me. That
+points only your browser at another dataset in the same bucket, for example a test folder, without changing the site.
+Its own `team-settings.json` comes with it. The header then shows the folder, and a bar under it has **Reset**, which
+returns to the report's own data. Changing the location, either way, asks for a reload, and downloaded data of the old
+location is removed from the device.
+
+Personal settings are kept per report path, so two reports on one host (for example `/` and `/bucket/` on GitHub Pages)
+don't share them.

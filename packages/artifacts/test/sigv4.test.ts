@@ -75,3 +75,15 @@ describe('uriEncode', () => {
     expect(uriEncode('å', true)).toBe('%C3%A5');
   });
 });
+
+describe('presigned PUT', () => {
+  it('signs the method, so a GET link cannot upload', async () => {
+    const { presignS3, presignS3Get } = await import('../src/sigv4.ts');
+    const o = { bucket: 'b', region: 'auto', key: 'data/team-settings.json', accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'secret', now: new Date('2026-11-10T00:00:00Z') };
+    const get = await presignS3Get(o);
+    const put = await presignS3({ ...o, method: 'PUT' });
+    expect(put.split('X-Amz-Signature=')[0]).toBe(get.split('X-Amz-Signature=')[0]);
+    expect(put.split('X-Amz-Signature=')[1]).not.toBe(get.split('X-Amz-Signature=')[1]);
+    expect(await presignS3(o)).toBe(get);
+  });
+});
