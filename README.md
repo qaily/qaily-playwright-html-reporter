@@ -138,7 +138,7 @@ The workspace layout is described in [packages/README.md](packages/README.md).
 
 ## Releasing
 
-See [docs/releasing.md](docs/releasing.md): bump with `npm version`, push the tag, and the Release workflow publishes to npm.
+Actions → **Release** → Run workflow (bump and channel), as for `@qaily/playwright-jsonl-reporter`. See [docs/releasing.md](docs/releasing.md).
 
 ## License
 

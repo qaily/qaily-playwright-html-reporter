@@ -1,49 +1,40 @@
 # Releasing
 
 Versions follow [semantic versioning](https://semver.org): a bug fix bumps the patch (1.0.1), a new feature the minor
-(1.1.0), a breaking change the major (2.0.0). Until 1.0.0 is stable, versions carry a `-beta.N` suffix and are published
-under the npm `beta` tag, so `npm install @qaily/playwright-html-reporter` keeps giving the last stable one.
+(1.1.0), a breaking change the major (2.0.0). Betas (`1.0.0-beta.N`) are published under the npm `beta` tag, so
+`npm install @qaily/playwright-html-reporter` keeps giving the last stable version.
+
+Releases work as in `@qaily/playwright-jsonl-reporter`: from the **Release** workflow in GitHub Actions.
 
 ## Publish a version
 
-1. Move the entries under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) into a new section,
-   `## [1.0.1] - YYYY-MM-DD`, and add its compare link at the bottom. Commit.
-2. Set the version and create the tag (`npm version` commits package.json and package-lock.json, and tags `v<version>`):
+1. While working, add entries under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) (Added / Changed / Fixed).
+2. GitHub → **Actions** → **Release** → **Run workflow** on `main`, and choose:
 
-   ```bash
-   npm version prerelease --preid beta   # 1.0.0-beta.0 → 1.0.0-beta.1
-   npm version 1.0.0                     # the stable release
-   npm version patch | minor | major     # after that
-   ```
+   | bump | channel | from 1.0.0-beta.0 | from 1.0.0 |
+   |---|---|---|---|
+   | current | beta | 1.0.0-beta.1 (the first release: 1.0.0-beta.0) | — |
+   | current | latest | 1.0.0 | — (already released) |
+   | patch | beta / latest | 1.0.1-beta.0 / 1.0.1 | 1.0.1-beta.0 / 1.0.1 |
+   | minor | beta / latest | 1.1.0-beta.0 / 1.1.0 | 1.1.0-beta.0 / 1.1.0 |
+   | major | beta / latest | 2.0.0-beta.0 / 2.0.0 | 2.0.0-beta.0 / 2.0.0 |
 
-3. Push the commit and the tag:
+   A beta takes the next free `-beta.N` of that version on npm. `current` keeps the version number: another beta of it,
+   or the stable release of a beta.
 
-   ```bash
-   git push --follow-tags
-   ```
-
-The [Release workflow](../.github/workflows/release.yml) then checks that the tag matches package.json, runs the typecheck
-and tests, publishes to npm (a prerelease under its tag, e.g. `beta`; otherwise `latest`) and creates the GitHub release
-with the changelog section as its notes.
+The workflow runs the typecheck and tests, builds, moves the `Unreleased` changelog entries into the new version's section,
+commits `release: vX`, tags `vX`, publishes to npm with provenance, and creates the GitHub release with that section as its
+notes (generated notes when it is empty). It stops if the tag or the npm version already exists.
 
 ## One-time setup
 
-The first version was published by hand, because npm can only trust a workflow for a package that exists:
+- **Environment:** repo Settings → Environments → `npm-release`, with the secret `NPM_TOKEN`: an npm granular access token
+  with read and write access to `@qaily/playwright-html-reporter` (or all packages of the `@qaily` scope). npm limits write
+  tokens to 90 days, so it needs renewing.
+- **Without a token (optional, after the first release):** on npmjs.com → the package → Settings → **Trusted publisher**:
+  GitHub Actions, organization `qaily`, repository `qaily-playwright-html-reporter`, workflow `release.yml`, environment
+  `npm-release`. The workflow then publishes without `NPM_TOKEN`, and the secret can be removed.
 
-```bash
-npm login
-npm publish --tag beta
-```
+## Promote a version to latest by hand
 
-Then on [npmjs.com](https://www.npmjs.com/package/@qaily/playwright-html-reporter) → **Settings** → **Trusted publisher**:
-GitHub Actions, organization `qaily`, repository `qaily-playwright-html-reporter`, workflow `release.yml`, no environment.
-After that, no npm token is needed anywhere. Optionally, also choose **Require two-factor authentication and disallow
-tokens** under Publishing access, so only the workflow can publish.
-
-## Promote a beta to stable
-
-```bash
-npm version 1.0.0 && git push --follow-tags
-```
-
-To make an already published version the default without a new release: `npm dist-tag add @qaily/playwright-html-reporter@<version> latest`.
+`npm dist-tag add @qaily/playwright-html-reporter@<version> latest` makes an already published version the default.

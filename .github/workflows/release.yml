@@ -1,26 +1,61 @@
 name: Release
 
-# Publishes to npm when a version tag is pushed (v1.2.3, or v1.2.3-beta.0 for a prerelease), then creates the GitHub
-# release from the CHANGELOG.md section of that version. See docs/releasing.md.
+# Actions → Release → Run workflow, from main. Same flow as @qaily/playwright-jsonl-reporter: CI computes the version,
+# commits "release: vX" with the changelog, tags it, publishes to npm and creates the GitHub release. See docs/releasing.md.
 #
-# npm trusted publishing: npm accepts this workflow's GitHub identity, so no npm token is stored, and the package gets
-# provenance. Set it up once on npmjs.com → the package → Settings → Trusted publisher (GitHub Actions, workflow release.yml).
+# npm login: the NPM_TOKEN secret of the npm-release environment, or npm trusted publishing once it is set up for this
+# workflow on npmjs.com (then no token is needed). Either way the package gets provenance.
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type (current: keep the version number, e.g. 1.0.0-beta.0 → 1.0.0-beta.1 with beta, → 1.0.0 with latest)'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - current
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        default: latest
+        options:
+          - latest
+          - beta
 
-permissions:
-  contents: write # the GitHub release
-  id-token: write # npm trusted publishing and provenance
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 20
+    environment:
+      name: npm-release
+    permissions:
+      contents: write # the release commit, tag and GitHub release
+      id-token: write # npm provenance and trusted publishing
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Assert main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases must be triggered from the main branch"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           # The workspace runs its TypeScript sources directly, which needs Node 22.18 or newer.
           node-version: 22
@@ -28,52 +63,149 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       # Trusted publishing needs npm 11.5.1 or newer.
-      - run: npm install -g npm@11
+      - name: Update npm
+        run: npm install -g npm@11
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Check the tag against package.json
+      - name: Quality checks
+        run: |
+          npm run app:typecheck
+          npm run app:test
+
+      - name: Build
+        run: npm run pkg:build
+
+      - name: Compute next version
         id: version
         run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match the version in package.json ($version)."
+          CURRENT=$(node -p "require('./package.json').version")
+          PKG=$(node -p "require('./package.json').name")
+          # Strip any existing prerelease suffix to get the base version
+          BASE=$(echo "$CURRENT" | sed 's/-.*//')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+
+          case "${{ inputs.bump }}" in
+            patch) NEXT_BASE="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+            minor) NEXT_BASE="$MAJOR.$((MINOR + 1)).0" ;;
+            major) NEXT_BASE="$((MAJOR + 1)).0.0" ;;
+            current) NEXT_BASE="$BASE" ;;
+          esac
+
+          if [[ "${{ inputs.channel }}" == "beta" ]]; then
+            # Find the highest existing beta for this base version on npm
+            EXISTING=$(npm view "${PKG}" versions --json 2>/dev/null \
+              | node -p "
+                  const vs = JSON.parse(require('fs').readFileSync(0,'utf8'));
+                  const betas = (Array.isArray(vs) ? vs : [vs])
+                    .filter(v => v.startsWith('${NEXT_BASE}-beta.'))
+                    .map(v => parseInt(v.split('-beta.')[1], 10))
+                    .filter(n => !isNaN(n));
+                  betas.length ? Math.max(...betas) : -1
+                " 2>/dev/null || echo "-1")
+            BETA_NUM=$((EXISTING + 1))
+            NEXT="${NEXT_BASE}-beta.${BETA_NUM}"
+          else
+            NEXT="$NEXT_BASE"
+          fi
+
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEXT" >> "$GITHUB_OUTPUT"
+          echo "channel=${{ inputs.channel }}" >> "$GITHUB_OUTPUT"
+          echo "### Release: $CURRENT → $NEXT (${{ inputs.channel }})" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guard against duplicate release
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          NEXT="${{ steps.version.outputs.next }}"
+          PKG=$(node -p "require('./package.json').name")
+
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
+            echo "::error::Tag ${TAG} already exists on origin"
             exit 1
           fi
-          # 1.2.3 → latest; 1.2.3-beta.0 → beta; 1.2.3-rc.1 → rc
-          case "$version" in
-            *-*) pre=${version#*-}; tag=${pre%%.*}; prerelease=true ;;
-            *) tag=latest; prerelease=false ;;
-          esac
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
-      # prepublishOnly type checks, tests and builds dist/ and app/. A version that is already on npm (for example the
-      # first one, published by hand) is skipped, so the GitHub release is still created.
+          if npm view "${PKG}@${NEXT}" version 2>/dev/null; then
+            echo "::error::${PKG}@${NEXT} already exists on npm"
+            exit 1
+          fi
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Moves the entries under "## [Unreleased]" into a section for this version (unless it has one already) and
+      # writes that section to notes.md for the GitHub release.
+      - name: Update the changelog
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const v = process.env.NEXT;
+            const date = new Date().toISOString().slice(0, 10);
+            let text = fs.readFileSync("CHANGELOG.md", "utf8");
+            const sectionOf = (t, name) => {
+              const start = t.indexOf(`## [${name}]`);
+              if (start < 0) return null;
+              const body = t.indexOf("\n", start) + 1;
+              const next = t.slice(body).search(/^## |^\[[^\]]+\]: /m);
+              return { start, body, end: next < 0 ? t.length : body + next };
+            };
+            if (!sectionOf(text, v)) {
+              const u = sectionOf(text, "Unreleased");
+              if (u) {
+                const entries = text.slice(u.body, u.end).trim();
+                text = text.slice(0, u.start) + `## [Unreleased]\n\n## [${v}] - ${date}\n\n${entries ? entries + "\n\n" : ""}` + text.slice(u.end);
+                const repo = "https://github.com/qaily/qaily-playwright-html-reporter";
+                text = text.replace(/^\[Unreleased\]: .*$/m, `[Unreleased]: ${repo}/compare/v${v}...HEAD\n[${v}]: ${repo}/releases/tag/v${v}`);
+              }
+            }
+            fs.writeFileSync("CHANGELOG.md", text);
+            const s = sectionOf(text, v);
+            fs.writeFileSync("notes.md", s ? text.slice(s.body, s.end).trim() + "\n" : "");
+          '
+          echo "Release notes:"; cat notes.md
+
+      - name: Bump version
+        run: |
+          NEXT="${{ steps.version.outputs.next }}"
+          if [[ "$NEXT" != "${{ steps.version.outputs.current }}" ]]; then
+            npm version "$NEXT" --no-git-tag-version
+          fi
+          git add package.json package-lock.json CHANGELOG.md
+          git diff --cached --quiet || git commit -m "release: v$NEXT"
+          git tag -a "v$NEXT" -m "release: v$NEXT"
+
+      - name: Verify package contents
+        run: npm pack --dry-run 2>&1 | tee /dev/stderr | grep -q "app/index.html"
+
+      - name: Push commit and tag
+        run: |
+          git push
+          git push origin "v${{ steps.version.outputs.next }}"
+
+      # prepublishOnly runs the checks and the build once more, on the released commit.
       - name: Publish to npm
         run: |
-          if npm view "@qaily/playwright-html-reporter@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
-            echo "${{ steps.version.outputs.version }} is already on npm, not publishing it again."
-          else
-            npm publish --tag "${{ steps.version.outputs.tag }}"
-          fi
-
-      - name: Create the GitHub release
+          npm publish --access public --provenance \
+            --tag "${{ steps.version.outputs.channel }}"
         env:
-          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version=${{ steps.version.outputs.version }}
-          # The CHANGELOG.md section of this version, without its heading.
-          awk -v v="$version" '
-            index($0, "## [" v "]") == 1 { found = 1; next }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then echo "See CHANGELOG.md." > notes.md; fi
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME exists already."
-          else
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md \
-              ${{ steps.version.outputs.prerelease == 'true' && '--prerelease' || '' }}
+          PRERELEASE_FLAG=""
+          if [[ "${{ steps.version.outputs.channel }}" == "beta" ]]; then
+            PRERELEASE_FLAG="--prerelease"
           fi
+          if [[ -s notes.md ]]; then NOTES=(--notes-file notes.md); else NOTES=(--generate-notes); fi
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            "${NOTES[@]}" \
+            $PRERELEASE_FLAG

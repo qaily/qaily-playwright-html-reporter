@@ -1,8 +1,8 @@
 # Changelog
 
 All notable changes to `@qaily/playwright-html-reporter`. Versions follow [semantic versioning](https://semver.org); while
-the version has a `-beta.N` suffix, minor changes may still break things. See [docs/releasing.md](docs/releasing.md) for how a
-version is published.
+the version has a `-beta.N` suffix, minor changes may still break things. Add entries under `Unreleased`; the Release workflow
+moves them into the new version's section (see [docs/releasing.md](docs/releasing.md)).
 
 ## [Unreleased]
 
