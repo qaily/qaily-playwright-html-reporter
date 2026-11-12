@@ -1,7 +1,7 @@
 # Releasing
 
 Versions follow [semantic versioning](https://semver.org): a bug fix bumps the patch (1.0.1), a new feature the minor
-(1.1.0), a breaking change the major (2.0.0). Betas (`1.0.0-beta.N`) are published under the npm `beta` tag, so
+(1.1.0), a breaking change the major (2.0.0). Betas (`1.0.1-beta.N`) are published under the npm `beta` tag, so
 `npm install @qaily/playwright-html-reporter` keeps giving the last stable version.
 
 Releases work as in `@qaily/playwright-jsonl-reporter`: from the **Release** workflow in GitHub Actions.
@@ -11,11 +11,11 @@ Releases work as in `@qaily/playwright-jsonl-reporter`: from the **Release** wor
 1. While working, add entries under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) (Added / Changed / Fixed).
 2. GitHub → **Actions** → **Release** → **Run workflow** on `main`, and choose:
 
-   | bump | channel | from 1.0.0-beta.0 | from 1.0.0 |
+   | bump | channel | from 1.0.1-beta.0 (now) | from 1.0.1 |
    |---|---|---|---|
-   | current | beta | 1.0.0-beta.1 (the first release: 1.0.0-beta.0) | — |
-   | current | latest | 1.0.0 | — (already released) |
-   | patch | beta / latest | 1.0.1-beta.0 / 1.0.1 | 1.0.1-beta.0 / 1.0.1 |
+   | current | beta | 1.0.1-beta.1 | — |
+   | current | latest | 1.0.1 | — (already released) |
+   | patch | beta / latest | 1.0.2-beta.0 / 1.0.2 | 1.0.2-beta.0 / 1.0.2 |
    | minor | beta / latest | 1.1.0-beta.0 / 1.1.0 | 1.1.0-beta.0 / 1.1.0 |
    | major | beta / latest | 2.0.0-beta.0 / 2.0.0 | 2.0.0-beta.0 / 2.0.0 |
 

@@ -20,7 +20,7 @@ month went, which issues keep coming back, and which parts of the product the te
 npm install --save-dev @qaily/playwright-html-reporter@beta
 ```
 
-Versions are still betas (`1.0.0-beta.N`), published under the `beta` tag; see [CHANGELOG.md](CHANGELOG.md).
+Versions are still betas (`1.0.1-beta.N`), published under the `beta` tag; see [CHANGELOG.md](CHANGELOG.md).
 
 Or straight from GitHub (builds on install, about 20 s): `npm install --save-dev github:qaily/qaily-playwright-html-reporter`.
 

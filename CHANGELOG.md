@@ -8,8 +8,6 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [1.0.1-beta.0] - 2026-11-12
 
-## [1.0.0-beta.0] - 2026-11-12
-
 First version on npm.
 
 ### Report
@@ -40,4 +38,3 @@ First version on npm.
 
 [Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.0...HEAD
 [1.0.1-beta.0]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.0
-[1.0.0-beta.0]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.0-beta.0
