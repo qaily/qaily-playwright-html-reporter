@@ -1,48 +1,79 @@
 name: Release
 
+# Publishes to npm when a version tag is pushed (v1.2.3, or v1.2.3-beta.0 for a prerelease), then creates the GitHub
+# release from the CHANGELOG.md section of that version. See docs/releasing.md.
+#
+# npm trusted publishing: npm accepts this workflow's GitHub identity, so no npm token is stored, and the package gets
+# provenance. Set it up once on npmjs.com → the package → Settings → Trusted publisher (GitHub Actions, workflow release.yml).
+
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: 'Version bump type'
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # the GitHub release
+  id-token: write # npm trusted publishing and provenance
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write # npm provenance
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
+          # The workspace runs its TypeScript sources directly, which needs Node 22.18 or newer.
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@11
+
       - run: npm ci
 
-      - name: Configure git
+      - name: Check the tag against package.json
+        id: version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in package.json ($version)."
+            exit 1
+          fi
+          # 1.2.3 → latest; 1.2.3-beta.0 → beta; 1.2.3-rc.1 → rc
+          case "$version" in
+            *-*) pre=${version#*-}; tag=${pre%%.*}; prerelease=true ;;
+            *) tag=latest; prerelease=false ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
-      - name: Bump version
-        run: 'npm version ${{ inputs.bump }} -m "release: v%s"'
-
-      # prepublishOnly type checks, tests and builds dist/ and app/.
+      # prepublishOnly type checks, tests and builds dist/ and app/. A version that is already on npm (for example the
+      # first one, published by hand) is skipped, so the GitHub release is still created.
       - name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if npm view "@qaily/playwright-html-reporter@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
+            echo "${{ steps.version.outputs.version }} is already on npm, not publishing it again."
+          else
+            npm publish --tag "${{ steps.version.outputs.tag }}"
+          fi
 
-      - name: Push the version commit and tag
-        run: git push --follow-tags
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${{ steps.version.outputs.version }}
+          # The CHANGELOG.md section of this version, without its heading.
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "See CHANGELOG.md." > notes.md; fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME exists already."
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md \
+              ${{ steps.version.outputs.prerelease == 'true' && '--prerelease' || '' }}
+          fi

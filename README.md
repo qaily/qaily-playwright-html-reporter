@@ -17,8 +17,10 @@ month went, which issues keep coming back, and which parts of the product the te
 ## Install
 
 ```bash
-npm install --save-dev @qaily/playwright-html-reporter
+npm install --save-dev @qaily/playwright-html-reporter@beta
 ```
+
+Versions are still betas (`1.0.0-beta.N`), published under the `beta` tag; see [CHANGELOG.md](CHANGELOG.md).
 
 Or straight from GitHub (builds on install, about 20 s): `npm install --save-dev github:qaily/qaily-playwright-html-reporter`.
 
@@ -133,6 +135,10 @@ npm run pkg:build          # dist/ and app/, as published to npm
 ```
 
 The workspace layout is described in [packages/README.md](packages/README.md).
+
+## Releasing
+
+See [docs/releasing.md](docs/releasing.md): bump with `npm version`, push the tag, and the Release workflow publishes to npm.
 
 ## License
 

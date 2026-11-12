@@ -1,6 +1,6 @@
 {
   "name": "@qaily/playwright-html-reporter",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.0",
   "description": "Playwright reporter with a static, DuckDB-powered report: run history, weekly and monthly dashboards, issues, a coverage heat map, and attachments from S3-compatible storage.",
   "repository": {
     "type": "git",
@@ -27,6 +27,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "app:dev": "npm run dev -w @qaily/shell",
