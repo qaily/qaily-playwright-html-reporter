@@ -16,7 +16,7 @@ import {
 import { DEFAULT_SETTINGS } from '@qaily/contracts';
 import { defineComponents } from '@qaily/ui';
 import { AiDock } from './ai-dock.ts';
-import { QailyShell, personalFolder, type DataLocation } from './shell.ts';
+import { QailyShell, locationOf, personalFolder, type DataLocation } from './shell.ts';
 import { THEMES } from './themes.ts';
 
 const trimSlashes = (s: string) => s.replace(/^\/+|\/+$/g, '');
@@ -37,9 +37,7 @@ async function boot(): Promise<void> {
   // reload, so the catalog, rollups and attachment links never mix two locations.
   const s3AtStart = settings.settings.connections.s3;
   const location: DataLocation = {
-    dataSource: s3AtStart.dataSource,
-    prefix: s3AtStart.prefix,
-    dataPrefix: s3AtStart.dataPrefix,
+    ...locationOf(s3AtStart),
     personal: server?.artifacts ? null : personalFolder(s3AtStart, settings.resolved.sources),
   };
   const readsFromBucket = !server?.artifacts && !!s3AtStart.bucket && location.dataSource === 'bucket';
@@ -49,7 +47,7 @@ async function boot(): Promise<void> {
     dataUrl,
     localServer: !!server?.artifacts,
     secrets,
-    s3: () => ({ ...settings.settings.connections.s3, dataSource: location.dataSource, prefix: location.prefix, dataPrefix: location.dataPrefix }),
+    s3: () => ({ ...settings.settings.connections.s3, ...locationOf(location) }),
     // Reloading is what clears loaded report data from memory, including DuckDB's copies.
     onForget: () => {
       if (readsFromBucket) void clearCachedRollups().finally(() => window.location.reload());

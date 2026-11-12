@@ -84,8 +84,20 @@ export function resolveSettings(
   return { settings, sources, warnings };
 }
 
-/** Paths of the bucket location: where the report reads run folders and report data from. */
-export const LOCATION_PATHS = ['connections.s3.dataSource', 'connections.s3.prefix', 'connections.s3.dataPrefix'] as const;
+/**
+ * Paths of the bucket location: which storage the report reads run folders and report data from. A viewer may set them
+ * personally, to look at another bucket or folder; they apply when the page loads.
+ */
+export const LOCATION_PATHS = [
+  'connections.s3.bucket',
+  'connections.s3.region',
+  'connections.s3.endpoint',
+  'connections.s3.pathStyle',
+  'connections.s3.dataSource',
+  'connections.s3.prefix',
+  'connections.s3.dataPrefix',
+] as const;
+export type LocationKey = (typeof LOCATION_PATHS)[number] extends `connections.s3.${infer K}` ? K : never;
 
 /** `top` over `base`, one settings field at a time: a field set in `top` replaces the whole field in `base`. */
 export function overlayLayer(base: SettingsLayer, top: SettingsLayer): SettingsLayer {

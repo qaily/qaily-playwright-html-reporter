@@ -1,4 +1,4 @@
-import { LOCATION_PATHS, type Catalog, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type Settings, type ThemeInfo } from '@qaily/contracts';
+import { LOCATION_PATHS, type Catalog, type LocationKey, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type ThemeInfo } from '@qaily/contracts';
 import {
   DataAccessError,
   FILTER_PARAMS,
@@ -22,19 +22,8 @@ import { LitElement, baseStyles, css, html, nothing, repeat } from '@qaily/ui';
 import { PageHost, type HostState } from './page-host.ts';
 import { PAGES, type PageEntry } from './pages.ts';
 
-/** Where the report reads its data from, fixed when the page loads. */
-export type DataLocation = Pick<Settings['connections']['s3'], 'dataSource' | 'prefix' | 'dataPrefix'> & {
-  /** The folder the viewer chose personally, for the header; null when the page loaded the report's own location. */
-  personal: string | null;
-};
-
-/** The personal folder to name in the header: the data folder first, since a report reading from the bucket shows that. */
-export function personalFolder(s3: Settings['connections']['s3'], sources: ResolvedSettings['sources']): string | null {
-  const mine = (p: string) => sources[p] === 'personal';
-  if (!LOCATION_PATHS.some(mine)) return null;
-  const folder = s3.dataSource === 'bucket' && (mine('connections.s3.dataPrefix') || !mine('connections.s3.prefix')) ? s3.dataPrefix : s3.prefix;
-  return folder.replace(/^\/+|\/+$/g, '') || '(bucket root)';
-}
+import type { DataLocation } from './location.ts';
+export { locationOf, personalFolder, type DataLocation } from './location.ts';
 
 export interface ShellServices {
   data: DataService;
@@ -252,7 +241,7 @@ export class QailyShell extends LitElement {
   private locationChanged(): boolean {
     const now = this.settingsNow.connections.s3;
     return LOCATION_PATHS.some((p) => {
-      const key = p.split('.').pop() as 'dataSource' | 'prefix' | 'dataPrefix';
+      const key = p.split('.').pop() as LocationKey;
       return now[key] !== this.services.location[key];
     });
   }

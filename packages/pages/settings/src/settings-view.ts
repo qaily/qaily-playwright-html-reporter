@@ -116,7 +116,15 @@ class SettingsPage extends LitElement {
             this.awsError = err instanceof Error ? err.message : String(err);
           }
         }}>
-          <label><span>Paste the output of <code>aws configure export-credentials --format process</code> (or <code>--format env</code>)</span>
+          <div class="muted small">
+            <p>Paste the output of one of these, in a terminal where the AWS CLI is logged in (<code>--profile</code> is the name
+              you gave <code>aws configure</code>; leave it out for the default profile):</p>
+            <pre class="cmd">aws configure export-credentials --profile qaily-aws --format process
+
+# Temporary, expire after 12 hours (for a profile with permanent keys):
+aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query Credentials --output json</pre>
+          </div>
+          <label><span>Credentials (JSON, or <code>export AWS_…=</code> lines from <code>--format env</code>)</span>
             <textarea name="creds" rows="5" autocomplete="off" spellcheck="false" class="mono"></textarea></label>
           <div class="inline-row">
             <select name="persistence" aria-label="Where to keep them">
@@ -567,6 +575,23 @@ class SettingsPage extends LitElement {
         border: 1px solid var(--q-border);
         border-radius: calc(var(--q-radius) * 0.75);
         padding: 8px;
+      }
+      pre.cmd {
+        font-family: var(--q-font-mono);
+        font-size: 0.78rem;
+        margin: 6px 0 10px;
+        padding: 8px;
+        overflow-x: auto;
+        color: var(--q-text);
+        background: var(--q-surface);
+        border: 1px solid var(--q-border);
+        border-radius: calc(var(--q-radius) * 0.75);
+      }
+      div.small {
+        font-size: 0.85rem;
+      }
+      div.small p {
+        margin: 0 0 4px;
       }
       ul.small {
         font-size: 0.85rem;

@@ -141,9 +141,16 @@ report's own pages, or from `https://trace.playwright.dev`.
 Settings → Tokens → **AWS credentials**: paste the output of
 
 ```bash
-aws configure export-credentials --format process     # JSON
-# or: aws configure export-credentials --format env   (export AWS_…= lines; PowerShell: --format powershell)
+aws configure export-credentials --profile qaily-aws --format process     # JSON; leave out --profile for the default profile
+# or: aws configure export-credentials --profile qaily-aws --format env   (export AWS_…= lines; PowerShell: --format powershell)
+
+# Temporary credentials that expire after 12 hours, for a profile with permanent keys (an IAM user):
+aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query Credentials --output json
 ```
+
+`--profile` is the name given to `aws configure --profile <name>`; `aws configure list-profiles` lists them. Without it the CLI
+uses the `default` profile and fails with "Unable to locate credentials" when there is none. Keep `--query Credentials` on
+`get-session-token`: it removes the outer `{"Credentials": …}` wrapper, so the report can read the JSON.
 
 Choose where to keep them: this tab only (default), remember on this device (localStorage), or not at all.
 Expired credentials are deleted automatically. Use temporary credentials and the read-only policy above: any script on
@@ -207,13 +214,18 @@ CORS for saving, in addition to the rules in section 2 (AWS format; for Google C
 }
 ```
 
-### Looking at another data folder
+### Looking at another bucket or data folder
 
-**Report data key prefix**, **S3 key prefix** and **Report data source** can also be set under Settings → For me. That
-points only your browser at another dataset in the same bucket, for example a test folder, without changing the site.
-Its own `team-settings.json` comes with it. The header then shows the folder, and a bar under it has **Reset**, which
-returns to the report's own data. Changing the location, either way, asks for a reload, and downloaded data of the old
-location is removed from the device.
+Under Settings → For me, a viewer can point only their own browser at another dataset, without changing the site: another
+folder in the same bucket (**Report data key prefix**, **S3 key prefix**, **Report data source**), or another bucket or storage
+service (**S3 bucket**, **S3 region**, **S3 endpoint**, **Bucket in the URL path**). For AWS, leave **S3 endpoint** empty: an
+empty value of your own replaces the site's endpoint. That dataset's own `team-settings.json` comes with it. The header then
+shows the bucket or folder, and a bar under it has **Reset**, which returns to the report's own data. Changing the location,
+either way, asks for a reload, and downloaded data of the old location is removed from the device.
+
+Another bucket needs credentials that can read it (Settings → Tokens) and CORS rules on it for the site's origin, e.g.
+`https://<org>.github.io`. This only affects the viewer's own browser: a bucket's `team-settings.json` never contains the
+connection, so stored data can't redirect anyone.
 
 Personal settings are kept per report path, so two reports on one host (for example `/` and `/bucket/` on GitHub Pages)
 don't share them.

@@ -28,12 +28,12 @@ describe('settings layers', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('lets the bucket location be set personally', () => {
-    const personal = { connections: { s3: { prefix: 'other/runs', dataPrefix: 'other/data', dataSource: 'bucket' as const, bucket: 'evil' } } };
+    const personal = { connections: { s3: { prefix: 'other/runs', dataPrefix: 'other/data', dataSource: 'bucket' as const, bucket: 'mine' } } };
     const { settings, sources } = resolveSettings(DEFAULT_SETTINGS, SITE, personal);
-    expect(settings.connections.s3).toMatchObject({ prefix: 'other/runs', dataPrefix: 'other/data', bucket: 'acme' });
+    expect(settings.connections.s3).toMatchObject({ prefix: 'other/runs', dataPrefix: 'other/data', bucket: 'mine' });
     expect(sources['connections.s3.dataPrefix']).toBe('personal');
-    // The bucket itself stays a team setting.
-    expect(sources['connections.s3.bucket']).toBe('team');
+    // A viewer may look at another bucket with their own credentials; it applies to their browser only.
+    expect(sources['connections.s3.bucket']).toBe('personal');
   });
 
   it('puts team settings from the bucket over the site, and never takes the bucket connection from there', () => {
