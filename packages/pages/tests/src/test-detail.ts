@@ -1,6 +1,6 @@
 // Test detail shown in the drawer: attempts, error, steps, screenshots, attachments, history, notes.
 
-import type { AttachmentRecord, PageContext, StepRecord } from '@qaily/contracts';
+import type { AttachmentCheck, AttachmentRecord, PageContext, StepRecord } from '@qaily/contracts';
 import { formatDateTime, formatDuration } from '@qaily/core';
 import {
   LitElement,
@@ -53,6 +53,7 @@ export class TestDetail extends LitElement {
     viewer: { state: true },
     showStack: { state: true },
     urls: { state: true },
+    gone: { state: true },
   };
   declare item: TestItem;
   declare ctx: PageContext;
@@ -69,6 +70,8 @@ export class TestDetail extends LitElement {
   declare showStack: boolean;
   /** Resolved attachment URLs for the shown attempt; null = needs S3 credentials. */
   declare urls: Map<string, string | null>;
+  /** Storage's answer for this attempt's files when they can't be opened: missing (e.g. expired) or denied. */
+  declare gone: Extract<AttachmentCheck, 'missing' | 'denied'> | null;
 
   private loadedFor = '';
   private urlsFor = '';
@@ -83,6 +86,7 @@ export class TestDetail extends LitElement {
     this.showStack = false;
     this.similar = [];
     this.urls = new Map();
+    this.gone = null;
   }
 
   willUpdate(changed: Map<string, unknown>): void {
@@ -108,7 +112,14 @@ export class TestDetail extends LitElement {
     const entries = await Promise.all(
       atts.map(async (a) => [a.path, await this.ctx.artifacts.url(this.runId, a.path).catch(() => null)] as const),
     );
-    if (this.urlsFor === key) this.urls = new Map(entries);
+    if (this.urlsFor !== key) return;
+    this.urls = new Map(entries);
+    this.gone = null;
+    // A bucket lifecycle rule removes a run's files together; asking for the smallest one tells for all of them.
+    const smallest = [...atts].sort((a, b) => a.size - b.size)[0];
+    if (!smallest || !this.ctx.artifacts.status().ready) return;
+    const check = await this.ctx.artifacts.check(this.runId, smallest.path);
+    if (this.urlsFor === key) this.gone = check === 'missing' || check === 'denied' ? check : null;
   }
 
   /** An image that fails may just have an expired link. Tries one new link; a load success allows another try later. */
@@ -252,8 +263,22 @@ export class TestDetail extends LitElement {
     const others = all.filter((a) => !a.type.startsWith('image/'));
     const url = (a: AttachmentRecord) => this.urls.get(a.path);
     const locked = !this.ctx.artifacts.status().ready;
+    if (this.gone === 'missing') {
+      return html`<section class="card">
+        <h3>Attachments</h3>
+        <p class="muted">The screenshots and files of this run are no longer in storage: a retention rule on the bucket
+          removes them after a while. The error and steps above are kept.</p>
+        <ul class="files">${all.map((a) => html`<li><span class="name">${a.name}</span>
+          <span class="muted">${a.type} · ${formatBytes(a.size)}</span></li>`)}</ul>
+      </section>`;
+    }
     return html`
       ${locked ? this.connectHint() : nothing}
+      ${this.gone === 'denied'
+        ? html`<p class="connect">Storage refused the files of this run. A retention rule on the bucket may have removed
+            them (AWS answers "access denied" for a missing file when your key can't list the bucket), or your key can't
+            read them.</p>`
+        : nothing}
       ${images.length
         ? html`<section class="card">
             <h3>Screenshots</h3>

@@ -5,8 +5,16 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, stat
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { artifactKey } from '@qaily/artifacts';
-import { addToAiIndex, parseAiRecord, parseAiRecordPath, type AiIndex } from '@qaily/contracts';
+import { addToAiIndex, attachmentCheckOf, parseAiRecord, parseAiRecordPath, type AiIndex } from '@qaily/contracts';
 import { LocalSigner, readS3Config } from './s3-signer.ts';
+
+/** HTTP status of a GET for the first byte; the body is not read. */
+async function fetchStatus(url: string): Promise<number> {
+  const ctrl = new AbortController();
+  const res = await fetch(url, { headers: { Range: 'bytes=0-0' }, signal: ctrl.signal });
+  ctrl.abort();
+  return res.status;
+}
 
 export interface HandlerOptions {
   /** Built app (index.html, assets/). Omit when Vite serves the app. */
@@ -174,12 +182,20 @@ export function createHandler(opts: HandlerOptions) {
       if (!runId || !relPath || runId.includes('/') || runId.includes('..') || relPath.split('/').includes('..')) {
         return sendJson(res, 400, { error: 'Invalid run or path' });
       }
+      const check = url.searchParams.has('check');
       const local = localAttachment(runId, relPath);
-      if (local) return sendFile(req, res, local, download ?? undefined);
+      if (local) return check ? sendJson(res, 200, { status: 'ok' }) : sendFile(req, res, local, download ?? undefined);
       const cfg = readS3Config(dataDir);
-      if (!cfg.bucket) return sendJson(res, 404, { error: 'Not found locally, and no S3 bucket is configured' });
+      if (!cfg.bucket) {
+        return check ? sendJson(res, 200, { status: 'missing' }) : sendJson(res, 404, { error: 'Not found locally, and no S3 bucket is configured' });
+      }
       try {
         const signed = await signer.presign(cfg, artifactKey(cfg.prefix, runId, relPath), download);
+        if (check) {
+          // Whether the file is still in the bucket: a lifecycle rule may have removed it.
+          const status = await fetchStatus(signed).then(attachmentCheckOf, () => 'unknown' as const);
+          return sendJson(res, 200, { status });
+        }
         const headers: Record<string, string> = { Location: signed, 'Cache-Control': 'no-store' };
         if (req.headers.origin === TRACE_VIEWER_ORIGIN) headers['Access-Control-Allow-Origin'] = TRACE_VIEWER_ORIGIN;
         res.writeHead(302, headers);

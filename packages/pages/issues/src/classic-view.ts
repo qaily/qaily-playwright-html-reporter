@@ -51,6 +51,9 @@ class IssuesClassic extends LitElement {
 
   private shotsFor = '';
   private shotsRetried = '';
+  /** Run whose thumbnails failed after a retry: not loaded again. */
+  private shotsGone = '';
+  private freshShots = new Set<string>();
   private aiFor = '';
   private offs: (() => void)[] = [];
 
@@ -149,15 +152,25 @@ class IssuesClassic extends LitElement {
       if (runId) {
         if (runId !== this.shotsFor) this.shots = new Map();
         this.shotsFor = runId;
-        this.loadShots(runId);
+        if (runId !== this.shotsGone) this.loadShots(runId);
       } else this.shots = new Map();
       if (runId !== this.aiFor || !runId) this.loadAi();
     }
   }
 
-  /** A thumbnail that fails may just have an expired link: sign the run's thumbnails again, once. */
-  private retryShots() {
-    if (this.shotsRetried === this.shotsFor) return;
+  /**
+   * A thumbnail that fails may just have an expired link: sign the run's thumbnails again, once. If they fail again,
+   * the files are likely gone (a bucket retention rule), so the issues show their bars instead.
+   */
+  private retryShots(src: string) {
+    if (this.shotsRetried === this.shotsFor) {
+      // Only a freshly signed link failing means the file is gone; others may be from before the retry.
+      if (this.freshShots.has(src)) {
+        this.shotsGone = this.shotsFor;
+        this.shots = new Map();
+      }
+      return;
+    }
     this.shotsRetried = this.shotsFor;
     if (this.shotsFor) void this.loadShots(this.shotsFor, true);
   }
@@ -176,7 +189,9 @@ class IssuesClassic extends LitElement {
           if (url) map.set(testId, url);
         }),
       );
-      if (this.shotsFor === runId) this.shots = map;
+      if (this.shotsFor !== runId) return;
+      this.shots = map;
+      if (fresh) this.freshShots = new Set(map.values());
     } catch {
       // Screenshots are a nice-to-have; the issue list works without them.
     }
@@ -255,7 +270,7 @@ class IssuesClassic extends LitElement {
             ? html`<div class="muted seen">First seen ${formatDateTime(new Date(i.firstSeen), s)} · last seen ${formatRelative(new Date(i.lastSeen), this.ctx.now())}</div>`
             : nothing}
         </div>
-        ${firstShot ? html`<img class="thumb" src=${firstShot} alt="Screenshot of a failing test" loading="lazy" @error=${() => this.retryShots()} />` : this.bars(i)}
+        ${firstShot ? html`<img class="thumb" src=${firstShot} alt="Screenshot of a failing test" loading="lazy" @error=${() => this.retryShots(firstShot)} />` : this.bars(i)}
       </div>
       <div class="actions">
         <button @click=${() => this.toggle(i.sig)} aria-expanded=${open}>${open ? 'Hide' : 'Show'} affected tests</button>

@@ -103,6 +103,97 @@ describe('qaily-report build', () => {
   });
 });
 
+describe('qaily-report build, after run folders expire', () => {
+  // 30 runs over 40 days before 2026-10-15: September and October.
+  let base: string;
+  const runs = () => join(base, 'runs');
+  const out = () => join(base, 'data');
+  const readCatalog = () => JSON.parse(readFileSync(join(out(), 'catalog.json'), 'utf8')) as Catalog;
+  const monthRuns = (m: Catalog['months'][number]) => JSON.parse(readFileSync(join(out(), m.files.runs), 'utf8')) as RunRow[];
+  const testRunIds = async (m: Catalog['months'][number]) =>
+    (await query(`SELECT DISTINCT run_id FROM '${join(out(), m.files.tests)}'`)).map((r) => r.run_id as string).sort();
+  const runDirs = () => readdirSync(runs()).filter((d) => !d.startsWith('.'));
+
+  beforeAll(async () => {
+    base = mkdtempSync(join(tmpdir(), 'qaily-expire-'));
+    writeDemoRuns(runs(), { runs: 30, days: 40, now: new Date('2026-10-15T12:00:00Z') });
+    await build({ inDir: runs(), outDir: out() });
+  });
+  afterAll(() => rmSync(base, { recursive: true, force: true }));
+
+  it('keeps every month and run when all run folders are gone, without rebuilding', async () => {
+    const before = readCatalog();
+    expect(before.months.map((m) => m.month)).toEqual(['2026-10', '2026-09']);
+    const testsBefore = await Promise.all(before.months.map(testRunIds));
+    for (const d of runDirs()) rmSync(join(runs(), d), { recursive: true });
+
+    const result = await build({ inDir: runs(), outDir: out() });
+    expect(result.rebuiltMonths).toEqual([]);
+    const after = readCatalog();
+    expect(after.months).toEqual(before.months);
+    expect(after.runCount).toBe(30);
+    expect(after.latestRunAt).toBe(before.latestRunAt);
+    expect(await Promise.all(after.months.map(testRunIds))).toEqual(testsBefore);
+  });
+
+  it('adds new runs to a month whose older runs expired, keeping the old rows', async () => {
+    const before = readCatalog();
+    const october = before.months.find((m) => m.month === '2026-10')!;
+    const oldIds = monthRuns(october).map((r) => r.run_id);
+    writeDemoRuns(runs(), { runs: 4, days: 2, now: new Date('2026-10-20T12:00:00Z'), seed: 99 });
+
+    const result = await build({ inDir: runs(), outDir: out() });
+    expect(result.rebuiltMonths).toEqual(['2026-10']);
+    const after = readCatalog().months.find((m) => m.month === '2026-10')!;
+    const ids = monthRuns(after).map((r) => r.run_id);
+    expect(ids).toHaveLength(oldIds.length + 4);
+    expect(ids).toEqual(expect.arrayContaining([...oldIds, ...runDirs()]));
+    const finished = monthRuns(after).filter((r) => r.ended_at).map((r) => r.run_id).sort();
+    expect((await testRunIds(after)).filter((id) => finished.includes(id))).toEqual(finished);
+    expect(after.hash).not.toBe(october.hash);
+    expect(readCatalog().months.find((m) => m.month === '2026-09')).toEqual(before.months.find((m) => m.month === '2026-09'));
+  });
+
+  it('treats a run folder that lost files as expiring, not changed', async () => {
+    const before = readCatalog();
+    const victim = runDirs()[0];
+    rmSync(join(runs(), victim, 'test-summary.jsonl'));
+    const result = await build({ inDir: runs(), outDir: out() });
+    expect(result.rebuiltMonths).toEqual([]);
+    expect(readCatalog().months).toEqual(before.months);
+    const october = readCatalog().months.find((m) => m.month === '2026-10')!;
+    expect(await testRunIds(october)).toContain(victim);
+  });
+
+  it('keeps expired runs on --force too', async () => {
+    const before = readCatalog();
+    const result = await build({ inDir: runs(), outDir: out(), force: true });
+    expect(result.rebuiltMonths.sort()).toEqual(['2026-09', '2026-10']);
+    expect(readCatalog().months.map((m) => [m.month, m.runs])).toEqual(before.months.map((m) => [m.month, m.runs]));
+    for (const m of readCatalog().months) {
+      const finished = monthRuns(m).filter((r) => r.ended_at).map((r) => r.run_id).sort();
+      expect((await testRunIds(m)).filter((id) => finished.includes(id))).toEqual(finished);
+    }
+  });
+
+  it('brings back a month the published catalog lost, from its rollups', async () => {
+    const before = readCatalog();
+    writeFileSync(join(out(), 'catalog.json'), JSON.stringify({ ...before, months: before.months.slice(0, 1) }));
+    await build({ inDir: runs(), outDir: out() });
+    expect(readCatalog().months).toEqual(before.months);
+  });
+
+  it('drops months for good with pruneBefore', async () => {
+    const result = await build({ inDir: runs(), outDir: out(), pruneBefore: '2026-10' });
+    expect(result.catalog.months.map((m) => m.month)).toEqual(['2026-10']);
+    expect(result.catalog.prunedBefore).toBe('2026-10');
+    expect(existsSync(join(out(), 'rollups/runs-2026-09.json'))).toBe(false);
+    writeDemoRuns(runs(), { runs: 1, days: 1, now: new Date('2026-09-10T12:00:00Z'), seed: 7 });
+    const again = await build({ inDir: runs(), outDir: out() });
+    expect(again.catalog.months.map((m) => m.month)).toEqual(['2026-10']);
+  });
+});
+
 describe('issue key', () => {
   it('matches the SQL normalization used by the build', async () => {
     const { normalizeMessage, normalizeStep } = await import('@qaily/contracts');

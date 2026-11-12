@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEAM_SETTINGS_FILE, s3EndpointUrl } from '@qaily/artifacts';
-import { withoutBucketConnection, type SettingsLayer } from '@qaily/contracts';
+import { withoutBucketConnection, type Catalog, type SettingsLayer } from '@qaily/contracts';
 import type { S3Config } from './s3-signer.ts';
 
 export interface SyncOptions {
@@ -43,11 +43,13 @@ export interface PublishOptions {
    * kept. replace: always upload it. skip: leave the bucket's copy alone.
    */
   teamSettings?: 'seed' | 'replace' | 'skip';
+  /** publish: upload a catalog with fewer runs than the published one (otherwise refused, see shrinkError). */
+  allowShrink?: boolean;
   log?: (msg: string) => void;
 }
 
 const trimSlashes = (s: string) => s.replace(/^\/+|\/+$/g, '');
-const noBucket = () => new Error('No S3 bucket configured. Pass --bucket or set it in Settings → Connections (team).');
+export const noBucket = () => new Error('No S3 bucket configured. Pass --bucket or set it in Settings → Connections (team).');
 
 /** The data folder must sit outside the run folders, or `sync` would download it and treat it as runs. */
 export function dataLocation(s3: S3Config): string {
@@ -60,8 +62,9 @@ export function dataLocation(s3: S3Config): string {
   return `s3://${s3.bucket}/${data}/`;
 }
 
-function commonArgs(o: { s3: S3Config; profile?: string }): string[] {
-  const args = ['--region', o.s3.region, '--only-show-errors'];
+/** Region, endpoint and profile for an AWS CLI call. --only-show-errors exists for `aws s3` only; `aws s3api` rejects it. */
+export function commonArgs(o: { s3: S3Config; profile?: string }, api: 's3' | 's3api' = 's3'): string[] {
+  const args = ['--region', o.s3.region, ...(api === 's3' ? ['--only-show-errors'] : [])];
   if (o.s3.endpoint?.trim()) args.push('--endpoint-url', s3EndpointUrl(o.s3.endpoint));
   if (o.profile) args.push('--profile', o.profile);
   return args;
@@ -80,13 +83,35 @@ export function publishArgs(o: PublishOptions): string[][] {
   ];
 }
 
-/** Downloads what was published last time, so `build` only rebuilds months that changed. */
+/**
+ * Downloads what was published last time, so `build` only rebuilds months that changed and keeps runs whose folders
+ * have expired. Not the raw per-run copies (runs/): build doesn't read them, and they grow with every run.
+ */
 export function pullArgs(o: PublishOptions): string[] {
-  return ['s3', 'sync', dataLocation(o.s3), o.dataDir, ...SITE_ONLY, ...commonArgs(o)];
+  return ['s3', 'sync', dataLocation(o.s3), o.dataDir, ...SITE_ONLY, '--exclude', 'runs/*', ...commonArgs(o)];
+}
+
+/**
+ * Why a catalog must not replace the published one, or null when it may. A catalog with fewer runs usually comes from a
+ * build without `pull` first: with short retention on run folders it would hide every month but the last few days.
+ */
+export function shrinkError(local: Pick<Catalog, 'runCount' | 'prunedBefore'>, published: Pick<Catalog, 'runCount' | 'prunedBefore'> | null): string | null {
+  if (!published || local.runCount >= published.runCount) return null;
+  if ((local.prunedBefore ?? '') > (published.prunedBefore ?? '')) return null;
+  return (
+    `The new catalog has ${local.runCount} runs, the published one ${published.runCount}. ` +
+    'Run `qaily-report pull` before `build`, so runs whose folders have expired are kept. ' +
+    'Pass --allow-shrink to publish it anyway.'
+  );
 }
 
 export async function publish(o: PublishOptions): Promise<void> {
   if (!o.s3.bucket) throw noBucket();
+  if (!o.allowShrink) {
+    const local = JSON.parse(readFileSync(join(o.dataDir, 'catalog.json'), 'utf8')) as Catalog;
+    const error = shrinkError(local, await publishedCatalog(o));
+    if (error) throw new Error(error);
+  }
   const [data, catalog] = publishArgs(o);
   await aws(data, o.s3, o.log);
   await publishTeamSettings(o);
@@ -121,10 +146,19 @@ async function publishTeamSettings(o: PublishOptions): Promise<void> {
   }
 }
 
+/** The published catalog.json, or null when there is none yet. */
+async function publishedCatalog(o: PublishOptions): Promise<Catalog | null> {
+  const url = `${dataLocation(o.s3)}catalog.json`;
+  const { code, stdout, stderr } = await awsCapture(['s3', 'cp', url, '-', ...commonArgs(o)], o.s3);
+  if (code === 0) return JSON.parse(stdout) as Catalog;
+  if (/\b(404|Not Found|NoSuchKey|does not exist)\b/i.test(stderr)) return null;
+  throw new Error(`Could not read ${url}: ${stderr.trim() || `aws exited with code ${code}`}`);
+}
+
 /** True when the object exists; false only when the bucket says it doesn't. Any other failure throws. */
 async function objectExists(o: PublishOptions, url: string): Promise<boolean> {
   const [, bucket, key] = /^s3:\/\/([^/]+)\/(.+)$/.exec(url)!;
-  const { code, stderr } = await awsCapture(['s3api', 'head-object', '--bucket', bucket, '--key', key, ...commonArgs(o)], o.s3);
+  const { code, stderr } = await awsCapture(['s3api', 'head-object', '--bucket', bucket, '--key', key, ...commonArgs(o, 's3api')], o.s3);
   if (code === 0) return true;
   if (/\b(404|Not Found|NoSuchKey)\b/i.test(stderr)) return false;
   throw new Error(`Could not check ${url}: ${stderr.trim() || `aws exited with code ${code}`}`);
@@ -140,13 +174,15 @@ const awsEnv = (s3: S3Config) => (s3.endpoint?.trim() ? { AWS_REQUEST_CHECKSUM_C
 const noCli = (err: Error) =>
   (err as NodeJS.ErrnoException).code === 'ENOENT' ? new Error('The AWS CLI (v2) is not installed or not on PATH.') : err;
 
-function awsCapture(args: string[], s3: S3Config): Promise<{ code: number; stderr: string }> {
+export function awsCapture(args: string[], s3: S3Config): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('aws', args, { stdio: ['ignore', 'ignore', 'pipe'], env: awsEnv(s3) });
+    const child = spawn('aws', args, { stdio: ['ignore', 'pipe', 'pipe'], env: awsEnv(s3) });
+    let stdout = '';
     let stderr = '';
+    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
     child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
     child.on('error', (err) => reject(noCli(err)));
-    child.on('exit', (code) => resolve({ code: code ?? 1, stderr }));
+    child.on('exit', (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });
 }
 

@@ -79,4 +79,6 @@ export interface Catalog {
   months: CatalogMonth[]; // newest first
   /** Per-run raw files live at runs/<run_id>/<file>.jsonl.gz */
   runsPath: string;
+  /** Months before this one (YYYY-MM) were dropped with `build --prune-before` and are not built again. */
+  prunedBefore?: string;
 }

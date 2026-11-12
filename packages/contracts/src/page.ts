@@ -57,10 +57,26 @@ export interface CredentialsInfo {
   persistence: SecretPersistence | null;
 }
 
+export type AttachmentCheck = 'ok' | 'missing' | 'denied' | 'unknown';
+
+/** Storage answer (HTTP status) → AttachmentCheck. */
+export function attachmentCheckOf(status: number): AttachmentCheck {
+  if (status >= 200 && status < 300) return 'ok';
+  if (status === 404 || status === 410) return 'missing';
+  if (status === 403 || status === 401) return 'denied';
+  return 'unknown';
+}
+
 export interface ArtifactsApi {
   status(): ArtifactStatus;
   /** URL of a run attachment (path relative to the run folder), or null when S3 credentials are needed first. */
   url(runId: string, path: string, opts?: { downloadName?: string; /** Sign a new link even if a recent one exists. */ fresh?: boolean }): Promise<string | null>;
+  /**
+   * Whether an attachment is still in storage. missing: storage says it is gone, e.g. removed by a lifecycle rule.
+   * denied: storage refused; AWS answers that for a missing file too when the key has no s3:ListBucket.
+   * unknown: no credentials yet, or no answer (network, CORS).
+   */
+  check(runId: string, path: string): Promise<AttachmentCheck>;
   /** Fetches a text attachment, cut at maxBytes. */
   text(runId: string, path: string, maxBytes?: number): Promise<{ text: string; truncated: boolean }>;
   /** Browser mode: parses and stores pasted AWS credentials. Throws with a readable message when invalid. */

@@ -1,11 +1,13 @@
-import type {
-  ArtifactMode,
-  ArtifactStatus,
-  ArtifactsApi,
-  CredentialsInfo,
-  SecretPersistence,
-  SecretsApi,
-  Settings,
+import {
+  attachmentCheckOf,
+  type AttachmentCheck,
+  type ArtifactMode,
+  type ArtifactStatus,
+  type ArtifactsApi,
+  type CredentialsInfo,
+  type SecretPersistence,
+  type SecretsApi,
+  type Settings,
 } from '@qaily/contracts';
 import { isExpired, isTemporary, maskKeyId, parseCredentials, type AwsCredentials } from './credentials.ts';
 import { presignS3 } from './sigv4.ts';
@@ -117,6 +119,27 @@ export class ArtifactService implements ArtifactsApi {
       expiresIn,
       downloadName,
     });
+  }
+
+  async check(runId: string, path: string): Promise<AttachmentCheck> {
+    try {
+      if (this.mode === 'local') {
+        // The local server asks the bucket itself: a redirect to S3 would need CORS rules for this origin.
+        const u = new URL(await this.url(runId, path) ?? '');
+        u.searchParams.set('check', '1');
+        const body = (await (await fetch(u)).json()) as { status?: AttachmentCheck };
+        return body.status ?? 'unknown';
+      }
+      const url = await this.url(runId, path);
+      if (!url) return 'unknown';
+      // One byte is enough: only the status matters. Range is in the CORS rules already, for text attachments.
+      const ctrl = new AbortController();
+      const res = await fetch(url, { headers: { Range: 'bytes=0-0' }, signal: ctrl.signal });
+      ctrl.abort();
+      return attachmentCheckOf(res.status);
+    } catch {
+      return 'unknown';
+    }
   }
 
   async text(runId: string, path: string, maxBytes = 256 * 1024): Promise<{ text: string; truncated: boolean }> {

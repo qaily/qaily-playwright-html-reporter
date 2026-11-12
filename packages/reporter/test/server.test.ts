@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHandler } from '../src/server.ts';
 import { LocalSigner } from '../src/s3-signer.ts';
 
@@ -106,6 +106,25 @@ describe('artifact route', () => {
     expect(execCalls).toEqual([['configure', 'export-credentials', '--format', 'process']]);
   });
 
+  it('checks whether a file is still in the bucket, without redirecting', async () => {
+    const realFetch = globalThis.fetch;
+    const asked: string[] = [];
+    vi.stubGlobal('fetch', (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.startsWith('https://acme-pw.s3.')) return realFetch(input, init);
+      asked.push(new Headers(init?.headers).get('Range') ?? '');
+      return Promise.resolve(new Response(null, { status: url.includes('expired') ? 404 : 206 }));
+    });
+    try {
+      expect(await (await get('run=run1&path=attachments/shot.png&check=1')).json()).toEqual({ status: 'ok' });
+      expect(await (await get('run=run1&path=attachments/expired.zip&check=1')).json()).toEqual({ status: 'missing' });
+      expect(await (await get('run=run1&path=attachments/kept.zip&check=1')).json()).toEqual({ status: 'ok' });
+      expect(asked).toEqual(['bytes=0-0', 'bytes=0-0']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('rejects traversal, and callers other than this origin and the trace viewer', async () => {
     expect((await get('run=run1&path=attachments/../../secret')).status).toBe(400);
     expect((await get('run=../x&path=a')).status).toBe(400);
@@ -160,7 +179,17 @@ describe('publish and pull', () => {
     expect(args).toContain('settings.json');
     expect(args).toContain('ai/*');
     expect(args).toContain('team-settings.json');
+    expect(args[args.indexOf('runs/*') - 1]).toBe('--exclude');
     expect(args).not.toContain('--delete');
+  });
+
+  it('refuses a catalog with fewer runs than the published one, unless months were pruned', async () => {
+    const { shrinkError } = await import('../src/sync.ts');
+    expect(shrinkError({ runCount: 5 }, null)).toBeNull();
+    expect(shrinkError({ runCount: 500 }, { runCount: 400 })).toBeNull();
+    expect(shrinkError({ runCount: 60 }, { runCount: 400 })).toMatch(/qaily-report pull/);
+    expect(shrinkError({ runCount: 60, prunedBefore: '2026-01' }, { runCount: 400 })).toBeNull();
+    expect(shrinkError({ runCount: 60, prunedBefore: '2026-01' }, { runCount: 400, prunedBefore: '2026-01' })).toMatch(/--allow-shrink/);
   });
 
   it('publishes team settings without the bucket connection, and only when there are any', async () => {

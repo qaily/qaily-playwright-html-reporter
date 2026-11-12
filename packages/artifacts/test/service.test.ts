@@ -116,3 +116,32 @@ describe('dataFileUrl', () => {
     await expect(service().dataFileUrl('runs/../../secret.txt')).rejects.toThrow('Invalid');
   });
 });
+
+describe('attachment check', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('asks storage for one byte and reads the answer from the status', async () => {
+    const seen: { url: string; range: string | null }[] = [];
+    let status = 404;
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      seen.push({ url, range: new Headers(init?.headers).get('Range') });
+      return new Response(null, { status });
+    });
+    const s = service();
+    expect(await s.check('run', 'attachments/a.png')).toBe('missing');
+    expect(seen[0].url).toContain('/run/attachments/a.png');
+    expect(seen[0].range).toBe('bytes=0-0');
+    status = 206;
+    expect(await s.check('run', 'attachments/a.png')).toBe('ok');
+    status = 403;
+    expect(await s.check('run', 'attachments/a.png')).toBe('denied');
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    expect(await s.check('run', 'attachments/a.png')).toBe('unknown');
+  });
+
+  it('cannot tell without credentials', async () => {
+    expect(await service(null).check('run', 'attachments/a.png')).toBe('unknown');
+  });
+});

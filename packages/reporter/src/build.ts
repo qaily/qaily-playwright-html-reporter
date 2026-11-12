@@ -7,10 +7,11 @@
 //   <out>/rollups/steps-YYYY-MM.parquet     one row per top-level step of each attempt (+ explicit coverage labels)
 //   <out>/runs/<run_id>/<file>.jsonl.gz     raw per-run files, loaded when a run or test is opened
 //
-// Months whose runs did not change since the last build are skipped.
+// Months whose runs did not change since the last build are skipped. Runs whose folders are gone (a bucket lifecycle
+// rule expired them) keep their rows from the previous build, so <out> must hold that build: `pull` it first.
 
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
@@ -19,6 +20,7 @@ import {
   RUN_FILES,
   type Catalog,
   type CatalogMonth,
+  type RunFile,
   type RunRow,
   type SettingsLayer,
 } from '@qaily/contracts';
@@ -31,6 +33,8 @@ export interface BuildOptions {
   /** Overrides data.requireSyncComplete from <out>/settings.json. */
   requireSyncComplete?: boolean;
   force?: boolean;
+  /** Drops months before this one (YYYY-MM) for good, also when run folders or older rollups still have them. */
+  pruneBefore?: string;
   log?: (msg: string) => void;
 }
 
@@ -63,6 +67,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
   const { included, skipped } = selectCompleteRuns(scanRunDirs(inDir), requireSync);
   if (skipped.length) log(`Skipping ${skipped.length} run(s) without .sync-complete`);
 
+  const previous = readJsonIfExists<Catalog>(join(outDir, 'catalog.json'));
+  const previousHash = new Map(previous?.months.map((m) => [m.month, m.hash]) ?? []);
+  const prunedBefore = [opts.pruneBefore, previous?.prunedBefore].filter((m): m is string => !!m).sort().pop();
+  const pruned = (month: string) => !!prunedBefore && month < prunedBefore;
+
   // Runs per month, from the manifests.
   const byMonth = new Map<string, { dirs: RunDir[]; rows: RunRow[] }>();
   for (const dir of included) {
@@ -72,58 +81,103 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       continue;
     }
     const month = monthOf(row.started_at);
+    if (pruned(month)) continue;
     const bucket = byMonth.get(month) ?? { dirs: [], rows: [] };
     bucket.dirs.push(dir);
     bucket.rows.push(row);
     byMonth.set(month, bucket);
   }
 
-  const previous = readJsonIfExists<Catalog>(join(outDir, 'catalog.json'));
-  const previousHash = new Map(previous?.months.map((m) => [m.month, m.hash]) ?? []);
+  // Months built before stay even when their run folders are gone (a bucket lifecycle rule expired them): the
+  // previous catalog, and rollups on disk in case that catalog was published without them.
+  const allMonths = new Set<string>([...byMonth.keys(), ...(previous?.months.map((m) => m.month) ?? []), ...builtMonthsOnDisk(outDir)]);
+  for (const month of [...allMonths]) {
+    if (!pruned(month)) continue;
+    allMonths.delete(month);
+    for (const f of Object.values(monthFiles(month))) rmSync(join(outDir, f), { force: true });
+    log(`Pruned ${month}`);
+  }
 
   const months: CatalogMonth[] = [];
+  const monthRows = new Map<string, RunRow[]>();
   const rebuilt: string[] = [];
+  const toCopy: RunDir[] = [];
   let db: { instance: DuckDBInstance; conn: DuckDBConnection } | null = null;
 
-  for (const month of [...byMonth.keys()].sort().reverse()) {
-    const { dirs, rows } = byMonth.get(month)!;
-    rows.sort((a, b) => b.started_at.localeCompare(a.started_at));
+  for (const month of [...allMonths].sort().reverse()) {
+    const files = monthFiles(month);
+    const at = (f: string) => join(outDir, f);
+    const hasPrevious = [files.runs, files.tests, files.issues].every((f) => existsSync(at(f)));
+    const prevRows = hasPrevious ? (readJsonIfExists<RunRow[]>(at(files.runs)) ?? []) : [];
+    const prevSources = hasPrevious ? readJsonIfExists<Sources>(at(files.sources)) : null;
+
+    // A run that has lost files since it was built is being expired, not changed: its built rows are kept.
+    const current = byMonth.get(month) ?? { dirs: [], rows: [] };
+    const expiring = new Set(
+      current.dirs.filter((d) => prevSources?.[d.runId]?.files.some((f) => !d.files[f as RunFile])).map((d) => d.runId),
+    );
+    const dirs = current.dirs.filter((d) => !expiring.has(d.runId));
+    const curRows = current.rows.filter((r) => !expiring.has(r.run_id));
+    const curIds = new Set(dirs.map((d) => d.runId));
+    const kept = prevRows.filter((r) => !curIds.has(r.run_id));
+
+    const sources: Sources = {};
+    for (const d of dirs) sources[d.runId] = { fp: d.fingerprint, files: Object.keys(d.files) };
+    for (const r of kept) sources[r.run_id] = prevSources?.[r.run_id] ?? { fp: 'kept', files: [] };
+
+    const rows = [...curRows, ...kept].sort((a, b) => b.started_at.localeCompare(a.started_at));
+    if (!rows.length) continue;
     const hash = createHash('sha1')
       .update(`v${CATALOG_SCHEMA_VERSION}\n`)
-      .update(dirs.map((d) => `${d.runId}=${d.fingerprint}`).sort().join('\n'))
+      .update(Object.entries(sources).map(([id, s]) => `${id}=${s.fp}`).sort().join('\n'))
       .digest('hex')
       .slice(0, 12);
-    const files = {
-      runs: `rollups/runs-${month}.json`,
-      tests: `rollups/tests-${month}.parquet`,
-      issues: `rollups/issues-${month}.parquet`,
-      steps: `rollups/steps-${month}.parquet`,
-    };
-    months.push({ month, runs: rows.length, hash, files });
+    const { sources: _, ...catalogFiles } = files;
+    months.push({ month, runs: rows.length, hash, files: catalogFiles });
+    monthRows.set(month, rows);
+    toCopy.push(...dirs);
 
-    const upToDate =
-      !opts.force && previousHash.get(month) === hash && Object.values(files).every((f) => existsSync(join(outDir, f)));
-    if (upToDate) continue;
+    const upToDate = !opts.force && hasPrevious && existsSync(at(files.steps)) && previousHash.get(month) === hash;
+    if (upToDate) {
+      if (!prevSources) writeFileSync(at(files.sources), JSON.stringify(sources));
+      continue;
+    }
 
-    log(`Building ${month} (${rows.length} runs)`);
-    writeFileSync(join(outDir, files.runs), JSON.stringify(rows));
+    log(`Building ${month} (${curRows.length} runs${kept.length ? `, ${kept.length} kept from the previous build` : ''})`);
     if (!db) {
       const instance = await DuckDBInstance.create(':memory:');
       db = { instance, conn: await instance.connect() };
     }
-    await buildMonthParquet(db.conn, dirs, rows, { tests: join(outDir, files.tests), issues: join(outDir, files.issues), steps: join(outDir, files.steps) });
+    const fresh = { tests: `${at(files.tests)}.new`, issues: `${at(files.issues)}.new`, steps: `${at(files.steps)}.new` };
+    await buildMonthParquet(db.conn, dirs, curRows, fresh);
+    const keptIds = kept.map((r) => r.run_id);
+    for (const [name, order] of [['tests', 'run_id, test_id'], ['issues', 'issue_sig, run_id'], ['steps', 'run_id, test_id, attempt, idx']] as const) {
+      const target = at(files[name]);
+      if (keptIds.length && existsSync(target)) {
+        await db.conn.run(`COPY (
+          SELECT * FROM read_parquet(${sql(fresh[name])})
+          UNION ALL BY NAME
+          SELECT * FROM read_parquet(${sql(target)}) WHERE run_id IN (SELECT unnest(${sqlList(keptIds)}))
+          ORDER BY ${order}
+        ) TO ${sql(`${target}.merged`)} (FORMAT parquet, COMPRESSION zstd)`);
+        renameSync(`${target}.merged`, target);
+        rmSync(fresh[name]);
+      } else {
+        renameSync(fresh[name], target);
+      }
+    }
+    writeFileSync(at(files.runs), JSON.stringify(rows));
+    writeFileSync(at(files.sources), JSON.stringify(sources));
     rebuilt.push(month);
   }
 
   db?.conn.closeSync();
 
   let copied = 0;
-  for (const { dirs } of byMonth.values()) {
-    for (const dir of dirs) copied += copyRawRun(dir, join(outDir, 'runs', dir.runId));
-  }
+  for (const dir of toCopy) copied += copyRawRun(dir, join(outDir, 'runs', dir.runId));
   if (copied) log(`Copied ${copied} raw file(s)`);
 
-  const latest = months.length ? byMonth.get(months[0].month)!.rows[0]?.started_at ?? null : null;
+  const latest = months.length ? monthRows.get(months[0].month)![0]?.started_at ?? null : null;
   const catalog: Catalog = {
     schemaVersion: CATALOG_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -131,9 +185,32 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     latestRunAt: latest,
     months,
     runsPath: 'runs',
+    ...(prunedBefore ? { prunedBefore } : {}),
   };
   writeFileSync(join(outDir, 'catalog.json'), JSON.stringify(catalog, null, 2));
   return { catalog, rebuiltMonths: rebuilt, skippedRuns: skipped.map((r) => r.runId) };
+}
+
+/**
+ * What each built run was made from, per month (rollups/sources-YYYY-MM.json). Only `build` reads it: to tell a run
+ * that changed from one whose folder is being expired, and to keep a month's hash when its runs are only kept.
+ */
+type Sources = Record<string, { fp: string; files: string[] }>;
+
+function monthFiles(month: string) {
+  return {
+    runs: `rollups/runs-${month}.json`,
+    tests: `rollups/tests-${month}.parquet`,
+    issues: `rollups/issues-${month}.parquet`,
+    steps: `rollups/steps-${month}.parquet`,
+    sources: `rollups/sources-${month}.json`,
+  };
+}
+
+function builtMonthsOnDisk(outDir: string): string[] {
+  return readdirSync(join(outDir, 'rollups'))
+    .map((f) => /^runs-(\d{4}-\d{2})\.json$/.exec(f)?.[1])
+    .filter((m): m is string => !!m);
 }
 
 async function buildMonthParquet(

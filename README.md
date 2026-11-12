@@ -111,10 +111,11 @@ the bucket, CORS and IAM setup for AWS, Google Cloud Storage and MinIO, are in [
 
 | Command | What it does |
 |---|---|
-| `build --in <runs> --out <data> [--force]` | Turns run folders into the report's data; `--force` rebuilds every month |
+| `build --in <runs> --out <data> [--force] [--prune-before YYYY-MM]` | Turns run folders into the report's data, keeping runs whose folders have expired; `--force` rebuilds every month |
 | `serve --data <data> [--attachments <runs>] [--aws-profile p] [--port 4173]` | Local server; signs bucket links with this machine's login |
 | `sync --to <runs> --out <data> [--with-attachments]` | Downloads run folders from the bucket (attachments only if asked), then builds |
-| `pull` / `publish --out <data> [--team-settings seed\|replace\|skip]` | Bucket data source: fetch the last published data / upload the new one, and team settings when the bucket has none yet |
+| `pull` / `publish --out <data> [--team-settings seed\|replace\|skip] [--allow-shrink]` | Bucket data source: fetch the last published data / upload the new one, and team settings when the bucket has none yet. See [expiring run folders](docs/s3-artifacts.md#when-run-folders-expire-too) |
+| `expire-attachments --older-than <days> [--dry-run] [--all-versions]` | Deletes attachments of runs older than N days and keeps the rest of each run folder; run it daily. See [short retention](docs/s3-artifacts.md#8-short-retention-for-attachments) |
 | `demo --out <data> [--runs 120] [--days 30]` | Synthetic runs, for trying the report |
 | `catalog --csv <matrix.csv> --out <data>/coverage-catalog.json` | Planned coverage matrix for the heat map |
 

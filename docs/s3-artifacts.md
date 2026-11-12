@@ -117,7 +117,10 @@ CI needs `s3:PutObject` on the same prefix. No other permissions are required.
 
 With the Bucket data source, also add `arn:aws:s3:::<bucket>/qaily-data/*` to the viewer's `s3:GetObject` resources. The CI job that
 publishes needs `s3:GetObject` and `s3:PutObject` on that path, and `s3:ListBucket` with `s3:prefix` = `qaily-data/*`.
-Viewers don't need `s3:ListBucket`: `build` writes every file the report opens for a run, so a 403 always means an access problem.
+Viewers don't need `s3:ListBucket` on the data prefix: `build` writes every file the report opens for a run, so a 403 there always
+means an access problem. When attachments are deleted after a while (section 8), give viewers `s3:ListBucket` with `s3:prefix` = `jsonl-report/*`:
+without it, AWS answers 403 instead of 404 for an attachment that has been removed, and the report can't tell "removed" from
+"no access".
 
 ## 4. Local mode (`qaily-report serve`)
 
@@ -214,3 +217,64 @@ location is removed from the device.
 
 Personal settings are kept per report path, so two reports on one host (for example `/` and `/bucket/` on GitHub Pages)
 don't share them.
+
+## 8. Short retention for attachments
+
+Attachments (screenshots, traces, videos) are most of the bucket, and are rarely opened after a few days. `expire-attachments`
+deletes `<prefix>/<run>/attachments/` of old runs and keeps the rest of each run folder (manifest, JSONL, `.sync-complete`), so
+`build`, and anything else that reads the run folders, keeps working. The age is the command's argument, so nobody needs to
+change the bucket's own settings. A lifecycle rule can't do this: its filter matches the start of a key, and `attachments/` is
+in the middle of one.
+
+```bash
+npx qaily-report expire-attachments --out data --older-than 3 --dry-run   # what would go
+npx qaily-report expire-attachments --out data --older-than 3             # delete it
+```
+
+A run is deleted only when all its attachments are older than the given days, so a run still being uploaded is never touched.
+Run it once a day, for example as a scheduled CI job:
+
+```yaml
+on:
+  schedule: [{ cron: '0 3 * * *' }]
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 # data/settings.json says where the bucket is
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.REPORT_EXPIRE_ROLE_ARN }}', aws-region: eu-north-1 }
+      - run: npm ci
+      - run: npx qaily-report expire-attachments --out data --older-than 3
+```
+
+For MinIO or Google Cloud Storage, pass `--endpoint` (or keep it in `data/settings.json`) and the keys as `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY`.
+
+Permissions for the job: `s3:ListBucket` on the bucket with `s3:prefix` = `jsonl-report/*`, and `s3:DeleteObject` on
+`arn:aws:s3:::<bucket>/jsonl-report/*/attachments/*` (only attachments can be deleted).
+
+**Versioning:** in a versioned bucket a delete only hides a file, and its old version is still stored and billed. Either add a
+lifecycle rule that deletes noncurrent versions after a day, or, where you can't change the bucket, pass `--all-versions`: it
+deletes old versions and delete markers of those attachments too, and needs `s3:ListBucketVersions` and `s3:DeleteObjectVersion`.
+Google Cloud Storage doesn't support `--all-versions`; use its noncurrent-version rule there.
+
+What viewers see for a run whose attachments are gone: the test view says they are no longer in storage and still shows the error
+and steps; the issues page shows its bars instead of a screenshot. Give viewers `s3:ListBucket` with `s3:prefix` = `jsonl-report/*`
+so AWS answers 404 for a removed file. Without it AWS answers 403, and the report can only say "removed, or no access".
+
+### When run folders expire too
+
+If the run folders themselves are deleted after a while (a lifecycle rule on `jsonl-report/`, say after 30 days), the dashboards
+still keep every run, with the Bucket data source (section 7) and `pull` before `build` in CI:
+
+- `build` keeps the rows of runs whose folders are gone, from the previous build. A run that has lost some of its files (a rule
+  removes them one by one) is treated as expired, not changed. `build --prune-before YYYY-MM` drops older months for good.
+- Each run's raw files stay in `qaily-data/runs/<run_id>/`, so runs and tests still open.
+- `publish` refuses a catalog with fewer runs than the published one, the sign of a build without `pull`; `--allow-shrink`
+  publishes anyway. A month that a bad publish hid comes back on the next build after a `pull`, from its rollups.
+
+The Website data source builds from the run folders alone on every deploy, so with expiring run folders it would keep only what
+is still in the bucket.

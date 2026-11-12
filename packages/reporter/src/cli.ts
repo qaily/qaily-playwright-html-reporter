@@ -5,18 +5,26 @@ import { parseArgs } from 'node:util';
 import { build } from './build.ts';
 
 const USAGE = `Usage:
-  qaily-report build --in <run folders> --out <data dir> [--require-sync-complete=true|false] [--force]
+  qaily-report build --in <run folders> --out <data dir> [--require-sync-complete=true|false] [--force] [--prune-before YYYY-MM]
   qaily-report serve --data <data dir> [--app <built app dir>] [--attachments <run folders>] [--port 4173] [--host 127.0.0.1]
   qaily-report demo  --out <data dir> [--runs 120] [--days 30]
   qaily-report catalog --csv <matrix.csv> --out <data dir>/coverage-catalog.json
   qaily-report sync  --to <run folders> --out <data dir> [--bucket b --region r --prefix p --endpoint url] [--aws-profile name] [--with-attachments]
   qaily-report pull    --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
   qaily-report publish --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
-                       [--team-settings seed|replace|skip]
+                       [--team-settings seed|replace|skip] [--allow-shrink]
+  qaily-report expire-attachments --older-than <days> [--out <data dir>] [--bucket b --region r --prefix p --endpoint url]
+                       [--aws-profile name] [--dry-run] [--all-versions]
 
-  pull and publish are for the Bucket data source. pull first, so build skips months that didn't change; publish uploads the result.
+  build keeps runs whose folders are gone (expired by a bucket lifecycle rule) from the previous build in <data dir>;
+  --prune-before drops older months for good.
+  pull and publish are for the Bucket data source. pull first, so build skips months that didn't change and keeps expired
+  runs; publish uploads the result. publish refuses a catalog with fewer runs than the published one (a build without
+  pull), unless --allow-shrink.
   publish also uploads <data dir>/settings.json, without the bucket connection, as team-settings.json in the data folder: only
   when there is none yet (seed, the default), so team settings saved from the report are kept; replace overwrites them.
+  expire-attachments deletes <prefix>/<run>/attachments/ of runs whose attachments are all older than <days>, and keeps
+  the rest of each run folder. Run it on a schedule. --all-versions also deletes old versions in a versioned bucket.
 
   serve also takes --aws-profile; it signs S3 artifact URLs with that AWS login (default: env keys, then the default profile).
   Without --app, serve uses the report that ships with the npm package, or .qaily/app in a checkout of the repo.`;
@@ -53,6 +61,11 @@ export async function main(argv: string[]): Promise<void> {
       'with-attachments': { type: 'boolean' },
       csv: { type: 'string' },
       'team-settings': { type: 'string' },
+      'prune-before': { type: 'string' },
+      'allow-shrink': { type: 'boolean' },
+      'older-than': { type: 'string' },
+      'dry-run': { type: 'boolean' },
+      'all-versions': { type: 'boolean' },
     },
   });
   const log = (msg: string) => console.log(`[qaily] ${msg}`);
@@ -61,12 +74,15 @@ export async function main(argv: string[]): Promise<void> {
     case 'build': {
       if (!values.in || !values.out) throw new Error(USAGE);
       const flag = values['require-sync-complete'];
+      const pruneBefore = values['prune-before'];
+      if (pruneBefore !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(pruneBefore)) throw new Error('--prune-before must be a month, YYYY-MM');
       const started = Date.now();
       const result = await build({
         inDir: values.in,
         outDir: values.out,
         requireSyncComplete: flag === undefined ? undefined : flag !== 'false',
         force: values.force,
+        pruneBefore,
         log,
       });
       log(
@@ -154,8 +170,31 @@ export async function main(argv: string[]): Promise<void> {
       };
       const teamSettings = values['team-settings'] ?? 'seed';
       if (teamSettings !== 'seed' && teamSettings !== 'replace' && teamSettings !== 'skip') throw new Error('--team-settings must be seed, replace or skip');
-      await (command === 'pull' ? pull : publish)({ s3, dataDir: values.out, profile: values['aws-profile'], teamSettings, log });
+      await (command === 'pull' ? pull : publish)({ s3, dataDir: values.out, profile: values['aws-profile'], teamSettings, allowShrink: values['allow-shrink'], log });
       log(command === 'pull' ? 'Pulled the published report data' : 'Published the report data');
+      return;
+    }
+    case 'expire-attachments': {
+      const days = Number(values['older-than']);
+      if (!values['older-than'] || !(days > 0)) throw new Error(`--older-than must be a number of days above 0\n\n${USAGE}`);
+      const { expireAttachments } = await import('./expire.ts');
+      const { readS3Config } = await import('./s3-signer.ts');
+      const team = readS3Config(values.out ?? 'data');
+      const s3 = {
+        ...team,
+        endpoint: values.endpoint ?? team.endpoint,
+        bucket: values.bucket ?? team.bucket,
+        region: values.region ?? team.region,
+        prefix: values.prefix ?? team.prefix,
+      };
+      await expireAttachments({
+        s3,
+        olderThanDays: days,
+        profile: values['aws-profile'],
+        dryRun: values['dry-run'],
+        allVersions: values['all-versions'],
+        log,
+      });
       return;
     }
     default:
