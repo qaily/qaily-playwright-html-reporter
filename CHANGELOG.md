@@ -6,6 +6,8 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+## [1.0.1-beta.1] - 2026-11-13
+
 ### Changed
 
 - Settings → For the team: the save button says where it writes (**Save to bucket**, **Save to settings.json** or
@@ -43,5 +45,6 @@ First version on npm.
 - `expire-attachments --older-than <days>` deletes the attachments of old runs and keeps the rest of each run folder;
   `--all-versions` also removes old versions in a versioned bucket.
 
-[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.0...HEAD
+[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.1...HEAD
+[1.0.1-beta.1]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.1
 [1.0.1-beta.0]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.0
