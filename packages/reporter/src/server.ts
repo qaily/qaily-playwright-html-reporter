@@ -24,6 +24,8 @@ export interface HandlerOptions {
   attachmentsDir?: string;
   /** Signs S3 artifact URLs; defaults to this machine's AWS login. */
   signer?: LocalSigner;
+  /** Playwright's trace viewer, served at /trace/ (the Trace viewer setting is then trace/ or ../trace/). */
+  traceViewerDir?: string;
 }
 
 const MIME: Record<string, string> = {
@@ -43,6 +45,8 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
   '.zip': 'application/zip',
   '.webm': 'video/webm',
+  '.ttf': 'font/ttf',
+  '.webmanifest': 'application/manifest+json',
 };
 
 const MAX_SETTINGS_BYTES = 256 * 1024;
@@ -265,6 +269,13 @@ export function createHandler(opts: HandlerOptions) {
         const raw = safeJoin(attachmentsDir, `/${attachment[1]}/${attachment[2]}`);
         if (raw && existsSync(raw) && statSync(raw).isFile()) return sendFile(req, res, raw);
       }
+      return sendJson(res, 404, { error: 'Not found' });
+    }
+
+    if (opts.traceViewerDir && (path === '/trace' || path.startsWith('/trace/'))) {
+      const rel = path === '/trace' || path === '/trace/' ? '/index.html' : path.slice('/trace'.length);
+      const file = safeJoin(resolve(opts.traceViewerDir), rel);
+      if (file && existsSync(file) && statSync(file).isFile()) return sendFile(req, res, file);
       return sendJson(res, 404, { error: 'Not found' });
     }
 

@@ -6,6 +6,12 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Added
+
+- Self-hosted trace viewer: `qaily-report trace-viewer --out <site>/trace` copies Playwright's trace viewer from the test
+  project. With Settings → Connections → **Trace viewer** set (e.g. `trace/`), the report reads the trace itself and hands
+  it to that viewer, so traces open without CORS rules for the viewer. `serve` provides it at `/trace/`.
+
 ## [1.0.1-beta.1] - 2026-11-13
 
 ### Changed

@@ -8,3 +8,4 @@ export * from './issues.ts';
 export * from './ai.ts';
 export * from './coverage.ts';
 export * from './period.ts';
+export * from './trace-viewer.ts';

@@ -145,3 +145,26 @@ describe('attachment check', () => {
     expect(await service(null).check('run', 'attachments/a.png')).toBe('unknown');
   });
 });
+
+describe('whole attachments (for the trace viewer)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('downloads the file with a fresh signed link, and explains failures', async () => {
+    const urls: string[] = [];
+    let respond = () => new Response('zip-bytes', { status: 200 });
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      return respond();
+    });
+    const s = service();
+    expect(await (await s.blob('run', 'attachments/trace.zip')).text()).toBe('zip-bytes');
+    expect(urls[0]).toContain('/run/attachments/trace.zip');
+    respond = () => new Response(null, { status: 404 });
+    await expect(s.blob('run', 'attachments/trace.zip')).rejects.toThrow('not found');
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    await expect(s.blob('run', 'attachments/trace.zip')).rejects.toThrow('CORS');
+    await expect(service(null).blob('run', 'attachments/trace.zip')).rejects.toThrow('Connect credentials');
+  });
+});

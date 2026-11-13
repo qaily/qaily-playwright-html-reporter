@@ -77,6 +77,8 @@ export interface ArtifactsApi {
    * unknown: no credentials yet, or no answer (network, CORS).
    */
   check(runId: string, path: string): Promise<AttachmentCheck>;
+  /** Fetches a whole attachment, e.g. a trace to hand to the trace viewer. Throws with a readable message. */
+  blob(runId: string, path: string): Promise<Blob>;
   /** Fetches a text attachment, cut at maxBytes. */
   text(runId: string, path: string, maxBytes?: number): Promise<{ text: string; truncated: boolean }>;
   /** Browser mode: parses and stores pasted AWS credentials. Throws with a readable message when invalid. */

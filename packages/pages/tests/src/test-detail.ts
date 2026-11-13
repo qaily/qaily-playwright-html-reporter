@@ -1,6 +1,6 @@
 // Test detail shown in the drawer: attempts, error, steps, screenshots, attachments, history, notes.
 
-import type { AttachmentCheck, AttachmentRecord, PageContext, StepRecord } from '@qaily/contracts';
+import { sendTrace, traceViewerPage, type AttachmentCheck, type AttachmentRecord, type PageContext, type StepRecord } from '@qaily/contracts';
 import { formatDateTime, formatDuration } from '@qaily/core';
 import {
   LitElement,
@@ -137,6 +137,34 @@ export class TestDetail extends LitElement {
     const url = await this.ctx.artifacts.url(this.runId, a.path).catch(() => null);
     if (!url) return this.ctx.notify('Connect storage credentials in Settings → Tokens to open this file.', 'error');
     window.open(wrap(url), '_blank', 'noopener');
+  }
+
+  /** The self-hosted trace viewer, if the report has one (Settings → Connections → Trace viewer). */
+  private traceViewer(): URL | null {
+    try {
+      return traceViewerPage(this.ctx.settings.connections.traceViewer, document.baseURI);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Opens the trace in the self-hosted viewer: reads the file here and hands it over, so no CORS is needed for it. */
+  private async openTrace(e: Event, a: AttachmentRecord) {
+    const viewer = this.traceViewer();
+    if (!viewer) return this.openFresh(e, a, traceViewerUrl);
+    e.preventDefault();
+    // Opened inside the click, before any await, so the popup blocker allows it. Not noopener: the report needs the tab.
+    const win = window.open(viewer.href, '_blank');
+    if (!win) return this.ctx.notify('The browser blocked the trace viewer tab. Allow pop-ups for this site and try again.', 'error');
+    try {
+      const trace = await this.ctx.artifacts.blob(this.runId, a.path);
+      if ((await sendTrace(win, trace, viewer.origin)) === 'sent' && viewer.origin === location.origin) {
+        this.ctx.notify('The trace viewer did not take the trace. Download it and open it there with Select file.', 'error');
+      }
+    } catch (err) {
+      win.close();
+      this.ctx.notify(err instanceof Error ? err.message : String(err), 'error');
+    }
   }
 
   private async download(a: AttachmentRecord) {
@@ -305,7 +333,7 @@ export class TestDetail extends LitElement {
                     ${TEXT_TYPES.test(a.type) ? html`<button class="small" ?disabled=${locked} @click=${() => this.openText(a)}>View</button>` : nothing}
                     ${a.name === 'trace' && url(a)
                       ? html`<a class="small button" target="_blank" rel="noopener"
-                          href=${traceViewerUrl(url(a)!)} @click=${(e: Event) => this.openFresh(e, a, traceViewerUrl)}>Trace viewer</a>`
+                          href=${this.traceViewer()?.href ?? traceViewerUrl(url(a)!)} @click=${(e: Event) => this.openTrace(e, a)}>Trace viewer</a>`
                       : nothing}
                     <button class="small" ?disabled=${locked} @click=${() => this.download(a)}>Download</button>
                   </span>

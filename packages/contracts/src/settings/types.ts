@@ -51,6 +51,8 @@ export interface Settings {
     agentHostUrl: string;
     workingDirectory: string;
     pathMap: PathMapping[];
+    /** Self-hosted Playwright trace viewer (path relative to the report, or a URL); '' uses trace.playwright.dev. */
+    traceViewer: string;
     github: { apiBase: string; owner: string; repo: string; branch: string; dataPath: string };
     s3: { bucket: string; region: string; prefix: string; endpoint: string; pathStyle: boolean; dataSource: 'website' | 'bucket'; dataPrefix: string };
   };

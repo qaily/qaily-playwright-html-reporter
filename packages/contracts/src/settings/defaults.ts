@@ -73,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
     agentHostUrl: 'ws://127.0.0.1:8081',
     workingDirectory: '',
     pathMap: [],
+    traceViewer: '',
     github: { apiBase: 'https://api.github.com', owner: '', repo: '', branch: 'main', dataPath: 'data' },
     s3: { bucket: '', region: 'eu-north-1', prefix: 'jsonl-report', endpoint: '', pathStyle: false, dataSource: 'website', dataPrefix: 'qaily-data' },
   },

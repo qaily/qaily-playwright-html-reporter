@@ -119,6 +119,8 @@ export const SETTINGS_FIELDS: FieldDef[] = [
   text('connections.workingDirectory', 'connections', 'Local test repo path', 'personal', 'Working directory for "Fix with AI".', '/Users/me/repos/tests'),
   { path: 'connections.pathMap', group: 'connections', label: 'Path mapping', scope: 'both', editor: { kind: 'path-map' },
     schema: z.array(z.object({ from: z.string().min(1), to: z.string() }).strict()), help: 'Rewrites CI paths in stack traces to local paths.' },
+  text('connections.traceViewer', 'connections', 'Trace viewer', 'both',
+    'Where a self-hosted Playwright trace viewer is, relative to this report (e.g. trace/ or ../trace/), copied there by `qaily-report trace-viewer`. The report reads the trace itself and hands it to the viewer, so it works without CORS. Empty: links to trace.playwright.dev, which needs CORS on the bucket.', 'trace/'),
   text('connections.github.apiBase', 'connections', 'GitHub API base', 'team', 'https://api.github.com, or https://<host>/api/v3 for GitHub Enterprise Server.'),
   text('connections.github.owner', 'connections', 'GitHub owner', 'team', 'Owner of the repo that publishes this report.'),
   text('connections.github.repo', 'connections', 'GitHub repo', 'team'),

@@ -13,6 +13,7 @@ const USAGE = `Usage:
   qaily-report pull    --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
   qaily-report publish --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
                        [--team-settings seed|replace|skip] [--allow-shrink]
+  qaily-report trace-viewer --out <site dir>/trace [--from <test project dir>]
   qaily-report expire-attachments --older-than <days> [--out <data dir>] [--bucket b --region r --prefix p --endpoint url]
                        [--aws-profile name] [--dry-run] [--all-versions]
 
@@ -26,6 +27,9 @@ const USAGE = `Usage:
   expire-attachments deletes <prefix>/<run>/attachments/ of runs whose attachments are all older than <days>, and keeps
   the rest of each run folder. Run it on a schedule. --all-versions also deletes old versions in a versioned bucket.
 
+  trace-viewer copies Playwright's trace viewer from the test project's playwright-core, so it matches the Playwright that
+  recorded the traces. Set Settings → Connections → Trace viewer to where it is (e.g. trace/); traces then open there
+  without CORS rules for it. serve provides it at /trace/ by itself when it runs in a folder with Playwright installed.
   serve also takes --aws-profile; it signs S3 artifact URLs with that AWS login (default: env keys, then the default profile).
   Without --app, serve uses the report that ships with the npm package, or .qaily/app in a checkout of the repo.`;
 
@@ -66,6 +70,7 @@ export async function main(argv: string[]): Promise<void> {
       'older-than': { type: 'string' },
       'dry-run': { type: 'boolean' },
       'all-versions': { type: 'boolean' },
+      from: { type: 'string' },
     },
   });
   const log = (msg: string) => console.log(`[qaily] ${msg}`);
@@ -97,7 +102,11 @@ export async function main(argv: string[]): Promise<void> {
       if (!appDir) throw new Error('No built report found. Pass --app <dir>, or run `npm run app:build` in a checkout of this repo.');
       const { serve } = await import('./server.ts');
       const { LocalSigner } = await import('./s3-signer.ts');
+      const { findTraceViewer } = await import('./trace-viewer.ts');
+      const traceViewer = findTraceViewer();
+      if (traceViewer) log(`Trace viewer of Playwright ${traceViewer.version} at /trace/`);
       await serve({
+        traceViewerDir: traceViewer?.dir,
         signer: new LocalSigner({ profile: values['aws-profile'] }),
         appDir,
         dataDir: values.data,
@@ -172,6 +181,13 @@ export async function main(argv: string[]): Promise<void> {
       if (teamSettings !== 'seed' && teamSettings !== 'replace' && teamSettings !== 'skip') throw new Error('--team-settings must be seed, replace or skip');
       await (command === 'pull' ? pull : publish)({ s3, dataDir: values.out, profile: values['aws-profile'], teamSettings, allowShrink: values['allow-shrink'], log });
       log(command === 'pull' ? 'Pulled the published report data' : 'Published the report data');
+      return;
+    }
+    case 'trace-viewer': {
+      if (!values.out) throw new Error(USAGE);
+      const { copyTraceViewer } = await import('./trace-viewer.ts');
+      const source = copyTraceViewer(values.out, values.from);
+      log(`Copied the trace viewer of Playwright ${source.version} to ${values.out}`);
       return;
     }
     case 'expire-attachments': {

@@ -143,11 +143,25 @@ export class ArtifactService implements ArtifactsApi {
   }
 
   async text(runId: string, path: string, maxBytes = 256 * 1024): Promise<{ text: string; truncated: boolean }> {
-    const url = await this.url(runId, path);
+    const res = await this.fetchAttachment(runId, path, { headers: { Range: `bytes=0-${maxBytes - 1}` } });
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const total = Number(res.headers.get('content-range')?.split('/')[1] ?? buf.length);
+    const slice = buf.subarray(0, maxBytes);
+    return { text: new TextDecoder().decode(slice), truncated: total > slice.length || buf.length > maxBytes };
+  }
+
+  async blob(runId: string, path: string): Promise<Blob> {
+    // A fresh link: the file may be large, and a reused one could expire while it downloads.
+    return (await this.fetchAttachment(runId, path, undefined, true)).blob();
+  }
+
+  /** Fetches an attachment; throws with a readable message when it can't. */
+  private async fetchAttachment(runId: string, path: string, init?: RequestInit, fresh = false): Promise<Response> {
+    const url = await this.url(runId, path, { fresh });
     if (!url) throw new Error('This attachment is stored in S3-compatible storage. Connect credentials in Settings → Tokens to view it.');
     let res: Response;
     try {
-      res = await fetch(url, { headers: { Range: `bytes=0-${maxBytes - 1}` } });
+      res = await fetch(url, init);
     } catch {
       // A browser hides the reason from scripts; missing CORS rules are the usual one (images still load without them).
       throw new Error(`Could not read ${path} from storage. Check that the bucket's CORS rules allow ${globalThis.location?.origin ?? 'this site'}, and your network connection.`);
@@ -166,10 +180,7 @@ export class ArtifactService implements ArtifactsApi {
     }
     if (res.status === 403) throw new Error('S3 refused access (403). The credentials may lack s3:GetObject on this prefix, or have expired.');
     if (!res.ok) throw new Error(`Could not load ${path} (${res.status})`);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    const total = Number(res.headers.get('content-range')?.split('/')[1] ?? buf.length);
-    const slice = buf.subarray(0, maxBytes);
-    return { text: new TextDecoder().decode(slice), truncated: total > slice.length || buf.length > maxBytes };
+    return res;
   }
 
   connect(pasted: string, persistence: SecretPersistence): CredentialsInfo {

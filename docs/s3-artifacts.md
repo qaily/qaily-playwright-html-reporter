@@ -48,7 +48,8 @@ The default prefix is `jsonl-report`, as used by the upload step in [`report-sit
 ## 2. Bucket settings
 
 - Private, **Block Public Access** on.
-- CORS, so browsers (and the Playwright trace viewer) can read objects:
+- CORS, so browsers can read objects. `https://trace.playwright.dev` is only needed when you don't host the trace viewer
+  yourself ([section 9](#9-self-hosted-trace-viewer)):
 
 ```json
 [
@@ -293,3 +294,33 @@ still keep every run, with the Bucket data source (section 7) and `pull` before 
 
 The Website data source builds from the run folders alone on every deploy, so with expiring run folders it would keep only what
 is still in the bucket.
+
+## 9. Self-hosted trace viewer
+
+By default, **Trace viewer** opens `https://trace.playwright.dev` with a signed link to the trace. That site fetches the
+trace itself, so the bucket's CORS rules must allow it, and some networks block it.
+
+You can host Playwright's trace viewer next to the report instead:
+
+- **How it works.** The report reads `trace.zip` the way it reads everything else, then hands the file to the viewer's
+  tab. The viewer never fetches from the bucket, so it needs no CORS rule. Traces open even when the bucket only allows
+  the report's own origin, or (with the report's local server) no browser origin at all.
+- **Copy it in CI, from the test project:**
+  ```sh
+  npx qaily-report trace-viewer --out site/trace
+  ```
+  A viewer only opens traces from its own Playwright version or older. So copy it from the Playwright that ran the
+  tests; this package doesn't bundle one.
+- **Point the report at it:** Settings → Connections → **Trace viewer**, relative to the report. Use `trace/` for a
+  report at the site root, or `../trace/` for one in a subfolder such as `/bucket/`. As a team setting in
+  `settings.json`:
+  ```json
+  { "connections": { "traceViewer": "trace/" } }
+  ```
+- **Locally,** `qaily-report serve` provides the viewer at `/trace/` when it runs in a folder where Playwright is
+  installed, so the same setting works there.
+- **Keep it on the report's origin.** The report checks that the viewer has loaded the trace by reading the tab's
+  address. On another origin it can't, so it sends the trace a few times instead.
+
+The viewer takes the trace through a message that Playwright uses but doesn't document. If a Playwright version
+changes it, the report says the viewer didn't take the trace: download it and open it in the viewer with **Select file**.
