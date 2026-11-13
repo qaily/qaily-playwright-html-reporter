@@ -159,9 +159,9 @@ export interface SettingsApi {
   readonly resolved: ResolvedSettings;
   readonly team: SettingsLayer;
   readonly personal: SettingsLayer;
-  /** Whether "Save for team" is available (local server or GitHub writer configured). */
+  /** Whether the team save button is available (local server or GitHub writer configured). */
   readonly canSaveTeam: boolean;
-  /** Where "Save for team" writes: the site's settings.json, or team-settings.json with the report data in the bucket. */
+  /** Where the team save button writes: the site's settings.json, or team-settings.json with the report data in the bucket. */
   readonly teamTarget: 'site' | 'data' | null;
   /** Where saving goes, for people, e.g. "bucket my-bucket/qaily-data". */
   readonly teamWriterLabel: string | null;

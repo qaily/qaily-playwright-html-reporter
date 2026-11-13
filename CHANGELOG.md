@@ -6,6 +6,13 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Changed
+
+- Settings → For the team: the save button says where it writes (**Save to bucket**, **Save to settings.json** or
+  **Commit to GitHub**) and asks before saving to the bucket, naming the file and warning when you look at a bucket of
+  your own. Fields are marked *Saved to bucket*, or *Site settings.json only* for the S3 connection, which the bucket
+  save leaves out and which can no longer be edited there.
+
 ## [1.0.1-beta.0] - 2026-11-12
 
 First version on npm.

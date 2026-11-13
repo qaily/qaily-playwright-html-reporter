@@ -55,7 +55,7 @@ async function boot(): Promise<void> {
   });
 
   // A report reading from a bucket also takes its team settings from there (team-settings.json in the data folder),
-  // so another data folder brings its own lanes and rules, and Save for team writes them back there.
+  // so another data folder brings its own lanes and rules, and Save to bucket writes them back there.
   const where = `${s3AtStart.bucket}/${trimSlashes(location.dataPrefix)}`;
   const bucketTeam = readsFromBucket ? new BucketTeamSettings(artifacts, () => where) : null;
   settings.setWriter(teamWriterFor(server, base) ?? bucketTeam ?? new GitHubSettingsWriter(() => settings.settings, secrets));

@@ -11,8 +11,8 @@ export interface EditorArgs {
   disabled: boolean;
   ctx: PageContext;
   onChange: (value: unknown) => void;
-  /** In team mode: the page's "Save for team", for editors that cover the page (the full-screen rules editor). */
-  team?: { dirty: boolean; canSave: boolean; saving: boolean; save: () => void };
+  /** In team mode: the page's team save button ("Save to bucket", …), for editors that cover the page (the full-screen rules editor). */
+  team?: { dirty: boolean; canSave: boolean; saving: boolean; save: () => void; label: string };
 }
 
 const LEVELS: HealthLevel[] = ['good', 'warn', 'bad'];
@@ -245,7 +245,7 @@ function coverageRulesEditor({ value, disabled, onChange, ctx, team }: EditorArg
       ${rulesFull && team
         ? html`${team.dirty ? html`<span class="muted">Unsaved changes</span>` : nothing}
             <button class="primary" ?disabled=${!team.dirty || !team.canSave || team.saving} @click=${team.save}>
-              ${team.saving ? 'Saving…' : 'Save for team'}</button>`
+              ${team.saving ? 'Saving…' : team.label}</button>`
         : nothing}
       <button @click=${(e: Event) => setFull(e, !rulesFull)} aria-pressed=${rulesFull}>
         <q-icon name=${rulesFull ? 'minimize' : 'maximize'}></q-icon> ${rulesFull ? 'Close full screen' : 'Full screen'}</button>

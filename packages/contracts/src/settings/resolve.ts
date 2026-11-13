@@ -116,3 +116,8 @@ export function overlayLayer(base: SettingsLayer, top: SettingsLayer): SettingsL
 export function withoutBucketConnection(layer: SettingsLayer): SettingsLayer {
   return setPath(layer, 'connections.s3', undefined);
 }
+
+/** True for settings that team-settings.json in the bucket leaves out: they come from the site's settings.json only. */
+export function isBucketConnectionPath(path: string): boolean {
+  return path === 'connections.s3' || path.startsWith('connections.s3.');
+}

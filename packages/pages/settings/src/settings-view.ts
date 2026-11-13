@@ -3,6 +3,7 @@ import {
   SETTINGS_FIELDS,
   SETTINGS_GROUPS,
   getPath,
+  isBucketConnectionPath,
   setPath,
   type FieldDef,
   type PageContext,
@@ -162,7 +163,34 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
   }
 
   private editable(field: FieldDef): boolean {
+    if (this.siteOnly(field)) return false;
     return field.scope === 'both' || field.scope === this.mode;
+  }
+
+  /** Team mode saving to the bucket: this field is left out of team-settings.json, so it can't be changed here. */
+  private siteOnly(field: FieldDef): boolean {
+    return this.mode === 'team' && this.ctx.settingsApi.teamTarget === 'data' && isBucketConnectionPath(field.path);
+  }
+
+  /** The team save button: says where it writes. */
+  private saveLabel(): string {
+    const api = this.ctx.settingsApi;
+    if (api.teamTarget === 'data') return 'Save to bucket';
+    if (api.teamWriterLabel?.startsWith('GitHub')) return 'Commit to GitHub';
+    return 'Save to settings.json';
+  }
+
+  /** Where the team save writes, for people: "bucket b/data/team-settings.json". */
+  private saveWhere(): string {
+    const api = this.ctx.settingsApi;
+    if (api.teamTarget === 'data') return `${api.teamWriterLabel ?? 'the bucket'}/team-settings.json`;
+    return `settings.json (${api.teamWriterLabel ?? 'the site'})`;
+  }
+
+  /** True when this viewer looks at a bucket location of their own, not the report's usual one. */
+  private personalLocation(): boolean {
+    const sources = this.ctx.settingsApi.resolved.sources;
+    return Object.entries(sources).some(([path, source]) => source === 'personal' && isBucketConnectionPath(path));
   }
 
   private valueOf(field: FieldDef): { value: unknown; source: keyof typeof SOURCE_LABEL } {
@@ -201,11 +229,18 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
   }
 
   private async saveTeam() {
+    const toBucket = this.ctx.settingsApi.teamTarget === 'data';
+    if (toBucket) {
+      const mine = this.personalLocation()
+        ? '\n\nYou are looking at a bucket location of your own (For me), so this writes there, not to the report\'s usual data.'
+        : '';
+      if (!window.confirm(`Save team settings to ${this.saveWhere()}?\n\nEveryone who views this data gets them on their next load. The bucket connection is not saved there.${mine}`)) return;
+    }
     this.saving = true;
     try {
       await this.ctx.settingsApi.saveTeam(this.draft);
       this.dirty = false;
-      this.ctx.notify('Team settings saved. Everyone gets them on their next load.');
+      this.ctx.notify(`Team settings saved to ${this.saveWhere()}. Everyone gets them on their next load.`);
     } catch (err) {
       this.ctx.notify(err instanceof Error ? err.message : String(err), 'error');
     } finally {
@@ -236,7 +271,7 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
         const parsed = JSON.parse(text) as { team?: SettingsLayer } & SettingsLayer;
         this.draft = parsed.team ?? parsed;
         this.dirty = true;
-        this.ctx.notify('Imported into the team draft. Review it, then save for team.');
+        this.ctx.notify(`Imported into the team draft. Review it, then ${this.saveLabel().toLowerCase()}.`);
       }
     } catch (err) {
       this.ctx.notify(`Import failed: ${err instanceof Error ? err.message : err}`, 'error');
@@ -253,6 +288,7 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
         <span class="label">${field.label}</span>
         <span class="badge source-${source}" title="Current value comes from: ${SOURCE_LABEL[source]}">${SOURCE_LABEL[source]}</span>
         ${field.scope !== 'both' ? html`<span class="badge scope">${field.scope === 'team' ? 'Team only' : 'Personal only'}</span>` : nothing}
+        ${this.whereBadge(field)}
         ${resettable
           ? html`<button class="link" @click=${() => this.reset(field)}>
               ${this.mode === 'personal' ? 'Reset to team/default' : 'Reset to default'}
@@ -260,7 +296,7 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
           : nothing}
       </div>
       ${field.help ? html`<p class="help muted">${field.help}</p>` : nothing}
-      ${!editable && field.scope === 'team'
+      ${!editable && field.scope === 'team' && !this.siteOnly(field)
         ? html`<p class="locked">Shared with the team, so it is edited under <b>For the team</b> (top of the page).
             <button class="primary" @click=${() => this.editForTeam(field)}>Edit for the team</button></p>`
         : nothing}
@@ -271,11 +307,20 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
         ctx: this.ctx,
         onChange: (v) => this.change(field, v),
         team: this.mode === 'team'
-          ? { dirty: this.dirty, canSave: this.ctx.settingsApi.canSaveTeam, saving: this.saving, save: () => void this.saveTeam() }
+          ? { dirty: this.dirty, canSave: this.ctx.settingsApi.canSaveTeam, saving: this.saving, save: () => void this.saveTeam(), label: this.saveLabel() }
           : undefined,
       })}</div>
       ${error ? html`<p class="error" role="alert">${error}</p>` : nothing}
     </div>`;
+  }
+
+  /** In team mode: whether saving writes this field to the bucket, or it comes from the site's settings.json only. */
+  private whereBadge(field: FieldDef) {
+    const api = this.ctx.settingsApi;
+    if (this.mode === 'personal' || field.scope === 'personal') return nothing;
+    if (this.siteOnly(field)) return html`<span class="badge where site" title="Left out of team-settings.json">Site settings.json only</span>`;
+    if (api.teamTarget === 'data') return html`<span class="badge where bucket" title=${`Save to bucket writes ${this.saveWhere()}`}>Saved to bucket</span>`;
+    return nothing;
   }
 
   private secrets() {
@@ -333,10 +378,11 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
             </div>
             <p class="muted">
               ${this.mode === 'personal'
-                ? 'Changes apply at once and are saved in this browser only, for this report.'
+                ? html`Changes apply at once and are kept <b>in this browser only</b>, for this report. Nobody else sees them.
+                    ${api.teamTarget === 'data' ? html`To change them for everyone, switch to <b>For the team</b> and use <b>Save to bucket</b>.` : nothing}`
                 : api.teamTarget === 'data'
                   ? api.canSaveTeam
-                    ? `Team settings are stored with the report data (team-settings.json in ${api.teamWriterLabel}). Saving needs a key that can write there; everyone viewing this data gets the change on their next load. The bucket connection comes from the site and isn't saved there. Personal settings still win for each viewer.`
+                    ? html`Nothing is shared until you press <b>Save to bucket</b>: it writes <code>${this.saveWhere()}</code>, and everyone viewing this data gets the change on their next load. Fields marked <i>Saved to bucket</i> go there; the bucket connection (<i>Site settings.json only</i>) does not. Saving needs a key that can write there. Personal settings still win for each viewer.`
                     : 'Team settings are stored with the report data in the bucket. Connect credentials that can write to the data folder (Tokens, below) to save them.'
                   : api.canSaveTeam
                     ? 'Edit the shared defaults (data/settings.json), then save. Personal settings still win for each viewer.'
@@ -344,8 +390,9 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
             </p>
             <div class="top-actions">
               ${this.mode === 'team'
-                ? html`<button class="primary" ?disabled=${!this.dirty || !api.canSaveTeam || this.saving} @click=${this.saveTeam}>
-                    ${this.saving ? 'Saving…' : 'Save for team'}</button>`
+                ? html`<button class="primary" title=${`Writes ${this.saveWhere()}`} ?disabled=${!this.dirty || !api.canSaveTeam || this.saving} @click=${this.saveTeam}>
+                    ${this.saving ? 'Saving…' : this.saveLabel()}</button>
+                    ${this.dirty ? html`<span class="muted">Unsaved team changes</span>` : nothing}`
                 : nothing}
               <button @click=${this.exportSettings}>Export JSON</button>
               <label class="file-button">Import JSON<input type="file" accept="application/json,.json" @change=${this.importSettings} /></label>
@@ -356,6 +403,11 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
             (g) => html`<section class="card" id=${`g-${g.id}`}>
               <h2>${g.label}</h2>
               ${g.help ? html`<p class="muted">${g.help}</p>` : nothing}
+              ${g.id === 'connections' && this.mode === 'team' && api.teamTarget === 'data'
+                ? html`<p class="locked"><span>The S3 fields (<i>Site settings.json only</i>) are not saved to the bucket: the page needs them
+                    to find the bucket, so they come from the site's settings.json (in CI, the repository variables). To look at
+                    another bucket yourself, use <b>For me</b>.</span></p>`
+                : nothing}
               ${SETTINGS_FIELDS.filter((f) => f.group === g.id).map((f) => this.field(f))}
             </section>`,
           )}
@@ -448,6 +500,14 @@ aws sts get-session-token --profile qaily-aws --duration-seconds 43200 --query C
         border-radius: 999px;
         border: 1px solid var(--q-border);
         color: var(--q-text-muted);
+      }
+      .badge.where.bucket {
+        border-color: var(--q-accent);
+        color: var(--q-accent);
+        background: var(--q-surface-2);
+      }
+      .badge.where.site {
+        border-style: dashed;
       }
       .source-personal {
         border-color: var(--q-accent);

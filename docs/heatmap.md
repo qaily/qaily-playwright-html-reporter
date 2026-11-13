@@ -32,7 +32,7 @@ Helpers:
 - **Try it** under the rules table shows which cell a step title (plus optional test title and tags) lands in.
 - **Unmapped steps** on the Heat Map page lists the most common steps no rule maps yet. **Copy rule** copies a rule
   whose Step regex matches that title, ready to fill in.
-- Settings → For the team → Import JSON loads rules from a file; review them, then Save for team.
+- Settings → For the team → Import JSON loads rules from a file; review them, then save them (Save to bucket, Save to settings.json or Commit to GitHub, depending on where the report keeps team settings).
 
 ### 2. Explicit step labels (most precise)
 

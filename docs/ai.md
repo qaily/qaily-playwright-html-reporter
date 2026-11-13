@@ -77,7 +77,7 @@ A finished job is saved as a **draft in this browser** (IndexedDB) and shown at 
 On Pages the result keeps showing from the browser until the site has redeployed. Every record stores provenance:
 model, time, author (GitHub login), prompt version and a hash of the context sent.
 
-The same GitHub settings also let **Settings → For the team → Save for team** work on Pages (it commits
+The same GitHub settings also let **Settings → For the team → Commit to GitHub** work on Pages (it commits
 `data/settings.json`).
 
 Files:

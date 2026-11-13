@@ -83,9 +83,10 @@ npx qaily-report serve --data report-data --attachments reports/data
 writes 120 synthetic runs, with heat map rules and a planned matrix.
 
 Everything else is set on the report's **Settings** page: lanes, health thresholds, theme, the bucket, heat map rules.
-**Save for team** writes `report-data/settings.json` when the report is opened through `serve` (on GitHub Pages it
+Under **For the team**, the save button says where it writes. **Save to settings.json** writes `report-data/settings.json` when the report is opened through `serve` (on GitHub Pages it
 can commit the file instead, see [docs/ai.md](docs/ai.md#drafts-and-publishing)). A report that reads its data from a
-bucket keeps team settings there instead, as `team-settings.json` next to the data (see
+bucket keeps team settings there instead (**Save to bucket**), as `team-settings.json` next to the data; the bucket
+connection itself always comes from the site's `settings.json` (see
 [docs/s3-artifacts.md](docs/s3-artifacts.md#team-settings-in-the-bucket)).
 
 ## 3. Share it

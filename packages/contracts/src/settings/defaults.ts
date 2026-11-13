@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Default settings. Edit this file to change what every report starts with.
-// Teams can override values in data/settings.json ("Save for team"), and each
+// Teams can override values in data/settings.json (the team save button), and each
 // viewer can override again in their browser ("Save for me").
 // ─────────────────────────────────────────────────────────────────────────────
 

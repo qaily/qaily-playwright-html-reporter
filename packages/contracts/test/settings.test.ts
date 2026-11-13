@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, SETTINGS_FIELDS, getPath, resolveSettings, setPath } from '../src/index.ts';
+import { DEFAULT_SETTINGS, SETTINGS_FIELDS, getPath, isBucketConnectionPath, resolveSettings, setPath } from '../src/index.ts';
 
 describe('settings fields', () => {
   it('every default value passes its own schema', () => {
@@ -63,5 +63,16 @@ describe('setPath', () => {
     const a = setPath({}, 'display.views', { monitoring: 'x' });
     expect(a).toEqual({ display: { views: { monitoring: 'x' } } });
     expect(setPath(a, 'display.views', undefined)).toEqual({});
+  });
+});
+
+describe('bucket team settings', () => {
+  it('leaves out only the bucket connection', () => {
+    expect(isBucketConnectionPath('connections.s3.bucket')).toBe(true);
+    expect(isBucketConnectionPath('connections.s3.dataPrefix')).toBe(true);
+    expect(isBucketConnectionPath('connections.s3')).toBe(true);
+    expect(isBucketConnectionPath('connections.github.owner')).toBe(false);
+    expect(isBucketConnectionPath('connections.s3x')).toBe(false);
+    expect(isBucketConnectionPath('lanes')).toBe(false);
   });
 });

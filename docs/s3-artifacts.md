@@ -34,8 +34,10 @@ no keys for dashboards. Use **Bucket** when the data must stay private and acces
 
 ## 1. Configure the bucket in the report
 
-Settings → **For the team** → Connections → S3 bucket / region / key prefix, then **Save for team**
-(writes `data/settings.json`). The object key of an attachment is:
+Settings → **For the team** → Connections → S3 bucket / region / key prefix, then **Save to settings.json**
+(writes `data/settings.json`, through `serve`). A report that reads its data from the bucket can't save these fields
+to the bucket: it needs them to find the bucket, so set them in the site's `settings.json` (in CI, for example from
+repository variables). The object key of an attachment is:
 
 ```
 <prefix>/<run_id>/attachments/<file>      e.g. jsonl-report/2026-10-12T14-05-09-334_82a5885_4395/attachments/trace.zip
@@ -194,7 +196,8 @@ connection, so a file in the bucket can't send the report somewhere else.
 - **First copy:** `publish` uploads `data/settings.json`, without the bucket connection, as `team-settings.json` when the
   data folder has none yet. After that it leaves the file alone, so changes saved from the report are kept.
   `--team-settings replace` overwrites it from `data/settings.json`; `--team-settings skip` never touches it.
-- **Saving from the report:** Settings → For the team → **Save for team** writes `team-settings.json` with the viewer's key.
+- **Saving from the report:** Settings → For the team → **Save to bucket** writes `team-settings.json` with the viewer's key,
+  after a confirmation that names the file. Fields marked *Saved to bucket* go there; the S3 fields are marked *Site settings.json only*.
   Everyone viewing that data gets the change on their next load, with no redeploy. It needs:
   - a key that can write the file (`s3:PutObject` on `<data prefix>/team-settings.json`); read-only keys can still view;
   - `PUT` in the bucket's CORS rules, with the `Content-Type` header (below);

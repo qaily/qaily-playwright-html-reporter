@@ -134,7 +134,7 @@ export class SettingsService implements SettingsApi {
     return this._data !== null;
   }
 
-  /** Chooses where "Save for team" writes, once the report knows where its data comes from. */
+  /** Chooses where the team save button writes, once the report knows where its data comes from. */
   setWriter(writer: TeamSettingsWriter | null): void {
     this.writer = writer;
   }
@@ -154,7 +154,7 @@ export class SettingsService implements SettingsApi {
     return this.writer?.label ?? null;
   }
 
-  /** Where "Save for team" writes: the site's settings.json, or team-settings.json with the report data. */
+  /** Where the team save button writes: the site's settings.json, or team-settings.json with the report data. */
   get teamTarget(): 'site' | 'data' | null {
     return this.writer ? (this.writer.target ?? 'site') : null;
   }
