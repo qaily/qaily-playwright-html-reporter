@@ -159,7 +159,7 @@ describe('LocalSigner', () => {
 });
 
 describe('publish and pull', () => {
-  const s3 = { bucket: 'acme', region: 'auto', prefix: 'jsonl-report', endpoint: 'https://storage.example.test', pathStyle: false, dataSource: 'bucket' as const, dataPrefix: '/qaily-data/' };
+  const s3 = { bucket: 'acme', region: 'auto', prefix: 'jsonl-report', endpoint: 'https://storage.example.test', pathStyle: false, dataSource: 'bucket' as const, dataPrefix: '/qaily-data/', transport: 'cors' as const };
 
   it('uploads the catalog last, and keeps site-only files out of the bucket', async () => {
     const { publishArgs } = await import('../src/sync.ts');
@@ -217,7 +217,7 @@ describe('publish and pull', () => {
 describe('sync', () => {
   it('excludes attachments unless asked, and passes the profile', async () => {
     const { syncArgs } = await import('../src/sync.ts');
-    const s3 = { bucket: 'acme', region: 'eu-north-1', prefix: '/jsonl-report/', endpoint: '', pathStyle: false, dataSource: 'website' as const, dataPrefix: '' };
+    const s3 = { bucket: 'acme', region: 'eu-north-1', prefix: '/jsonl-report/', endpoint: '', pathStyle: false, dataSource: 'website' as const, dataPrefix: '', transport: 'cors' as const };
     expect(syncArgs({ s3, toDir: 'cache' })).toEqual([
       's3', 'sync', 's3://acme/jsonl-report/', 'cache', '--region', 'eu-north-1', '--only-show-errors', '--exclude', '*/attachments/*',
     ]);

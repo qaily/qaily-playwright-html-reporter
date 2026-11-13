@@ -119,6 +119,7 @@ the bucket, CORS and IAM setup for AWS, Google Cloud Storage and MinIO, are in [
 | `sync --to <runs> --out <data> [--with-attachments]` | Downloads run folders from the bucket (attachments only if asked), then builds |
 | `pull` / `publish --out <data> [--team-settings seed\|replace\|skip] [--allow-shrink]` | Bucket data source: fetch the last published data / upload the new one, and team settings when the bucket has none yet. See [expiring run folders](docs/s3-artifacts.md#when-run-folders-expire-too) |
 | `expire-attachments --older-than <days> [--dry-run] [--all-versions]` | Deletes attachments of runs older than N days and keeps the rest of each run folder; run it daily. See [short retention](docs/s3-artifacts.md#8-short-retention-for-attachments) |
+| `bridge --origin <site origin> [--dry-run]` | Uploads the storage bridge page, for storage whose CORS rules you can't change (e.g. Dell ECS). See [storage bridge](docs/s3-artifacts.md#10-storage-without-cors-the-storage-bridge) |
 | `trace-viewer --out <site>/trace [--from <project>]` | Copies Playwright's trace viewer from the test project, so traces open on your own site without CORS. See [trace viewer](docs/s3-artifacts.md#9-self-hosted-trace-viewer) |
 | `demo --out <data> [--runs 120] [--days 30]` | Synthetic runs, for trying the report |
 | `catalog --csv <matrix.csv> --out <data>/coverage-catalog.json` | Planned coverage matrix for the heat map |

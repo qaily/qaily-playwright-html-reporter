@@ -10,6 +10,8 @@ export interface BucketData {
   keepOnDevice(): boolean;
   /** Names the data location, e.g. "bucket/folder", so cached rollups of different locations stay apart. */
   scope: string;
+  /** Reads a signed URL: fetch, or the storage bridge. Default: fetch. */
+  fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
 /** The bucket can't be read right now. The message says what the viewer can do about it. */
@@ -195,8 +197,10 @@ export class DataService implements DataApi {
     if (!url) throw new DataAccessError('Report data is stored in the bucket. Connect credentials in Settings → Tokens to view it.');
     let res: Response;
     try {
-      res = await fetch(url, init);
-    } catch {
+      res = await (this.bucket!.fetch ?? fetch)(url, init);
+    } catch (err) {
+      // The storage bridge explains its own failures.
+      if (err instanceof Error && err.name === 'BridgeError') throw new DataAccessError(err.message);
       throw new DataAccessError(`Could not read ${file} from storage. Check that the bucket's CORS rules allow ${globalThis.location?.origin ?? 'this site'}, and your network connection.`);
     }
     if (res.status === 403) throw new DataAccessError(`Storage refused access to ${file} (403). The credentials may lack read access to the report data, or have expired.`);

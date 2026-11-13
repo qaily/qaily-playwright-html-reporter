@@ -138,6 +138,9 @@ export const SETTINGS_FIELDS: FieldDef[] = [
   { path: 'connections.s3.dataSource', group: 'connections', label: 'Report data source', scope: 'both', schema: z.enum(['website', 'bucket']),
     help: 'Website: dashboards work without credentials, but anyone who can open the site can read test titles and errors. Bucket: data stays private and needs no site redeploy, but every viewer needs credentials, and CI must run qaily-report publish. Team settings then also come from the bucket. Applies after a reload.',
     editor: { kind: 'select', options: [{ value: 'website', label: 'Website' }, { value: 'bucket', label: 'Bucket' }] } },
+  { path: 'connections.s3.transport', group: 'connections', label: 'Storage access', scope: 'both', schema: z.enum(['cors', 'bridge']),
+    help: 'Direct: the browser reads the bucket itself, which needs CORS rules for this site. Bridge: it reads through a small page in the bucket (qaily-bridge.html, uploaded with `qaily-report bridge`), for storage whose CORS rules you can\'t change, such as Dell ECS. Applies at once; turn it off here if the bridge gives trouble.',
+    editor: { kind: 'select', options: [{ value: 'cors', label: 'Direct (CORS)' }, { value: 'bridge', label: 'Bridge (no CORS)' }] } },
   text('connections.s3.dataPrefix', 'connections', 'Report data key prefix', 'both',
     'Bucket folder for report data when the source is Bucket. Keep it outside the S3 key prefix. For me: look at another dataset in the same bucket; its team settings (team-settings.json in that folder) come with it.', 'qaily-data'),
 

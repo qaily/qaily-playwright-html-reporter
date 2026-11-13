@@ -324,3 +324,57 @@ You can host Playwright's trace viewer next to the report instead:
 
 The viewer takes the trace through a message that Playwright uses but doesn't document. If a Playwright version
 changes it, the report says the viewer didn't take the trace: download it and open it in the viewer with **Select file**.
+
+## 10. Storage without CORS: the storage bridge
+
+Some storage can't send CORS headers for your site. On Dell ECS, for example, only the storage team can add a CORS
+rule, and browser CORS checks fail until they also set up a namespace base URL. ECS also sends
+`Cross-Origin-Resource-Policy: same-origin`, which stops other sites from showing its images in `<img>`.
+
+The storage bridge works around both, with nothing to change on the storage:
+
+- **What it is.** `qaily-bridge.html` is a small page stored in the data folder. The report loads it in a hidden
+  iframe. Its script runs on the storage's own origin, so its requests to the bucket need no CORS. It sends the
+  answers to the report with `postMessage`.
+- **What it holds.** No credentials. The report signs every URL with the viewer's credentials, as it does without the
+  bridge, and the signature is the permission.
+- **What it allows:**
+  - requests only from the report sites it was uploaded for;
+  - only signed URLs on its own host, under the bucket's run and data folders;
+  - GET and HEAD, and PUT only for `team-settings.json`;
+  - only the `Range` and `Content-Type` headers.
+- **What it never does:** load other scripts or store anything. It is short, so read it once:
+  `npx qaily-report bridge --origin https://<org>.github.io --dry-run` prints it.
+
+### Turn it on
+
+1. Upload it once, with a key that can write to the data folder:
+   ```sh
+   npx qaily-report bridge --origin https://<org>.github.io --out report-data
+   ```
+   `--origin` is the scheme and host of the report's site, without a path. Repeat it, or separate with commas, for
+   several sites. Bucket, endpoint and folders come from `report-data/settings.json`, or from `--bucket`,
+   `--endpoint`, `--prefix`, `--data-prefix`. Upload it again after a new report version changes the bridge; the
+   report says so.
+2. Set Settings → Connections → **Storage access** to **Bridge**. For everyone, put it in the site's `settings.json`:
+   ```json
+   { "connections": { "s3": { "transport": "bridge" } } }
+   ```
+   A viewer can switch it for themselves under **For me**: Direct turns the bridge off at once, Bridge turns it on.
+
+With the bridge on, report data, text attachments, the "no longer in storage" check and Save to bucket all go through
+it. Screenshots are downloaded through it and shown from memory. Traces open in the self-hosted trace viewer
+([section 9](#9-self-hosted-trace-viewer)). Download and Open links don't need it: opening a link isn't affected by
+CORS.
+
+### If it doesn't load
+
+The report says "The storage bridge did not load". Check:
+
+- the page is in the data folder (`qaily-bridge.html`);
+- the browser trusts the storage's TLS certificate: open any signed link from the report in a tab;
+- `--origin` matched the report's site exactly, scheme included. If it didn't, the report says that site is not
+  allowed.
+
+It relies on the storage serving the page as HTML when the link asks for it (`response-content-type`), and allowing
+it in an iframe. Storage that stops doing either needs CORS or the local server (`qaily-report serve`) instead.

@@ -57,7 +57,9 @@ async function boot(): Promise<void> {
   // A report reading from a bucket also takes its team settings from there (team-settings.json in the data folder),
   // so another data folder brings its own lanes and rules, and Save to bucket writes them back there.
   const where = `${s3AtStart.bucket}/${trimSlashes(location.dataPrefix)}`;
-  const bucketTeam = readsFromBucket ? new BucketTeamSettings(artifacts, () => where) : null;
+  const bucketTeam = readsFromBucket
+    ? new BucketTeamSettings(artifacts, () => where, (url, init) => artifacts.storageFetch(url instanceof Request ? url.url : url, init))
+    : null;
   settings.setWriter(teamWriterFor(server, base) ?? bucketTeam ?? new GitHubSettingsWriter(() => settings.settings, secrets));
   const loadBucketTeam = async () => {
     if (bucketTeam) settings.setDataLayer(await bucketTeam.load());
@@ -68,7 +70,12 @@ async function boot(): Promise<void> {
   const data = new DataService(
     dataUrl,
     readsFromBucket
-      ? { scope: where, signedUrl: (path) => artifacts.dataFileUrl(path), keepOnDevice: () => artifacts.keepsCredentialsOnDevice() }
+      ? {
+          scope: where,
+          signedUrl: (path) => artifacts.dataFileUrl(path),
+          keepOnDevice: () => artifacts.keepsCredentialsOnDevice(),
+          fetch: (url, init) => artifacts.storageFetch(url, init),
+        }
       : null,
   );
   // Tab-only credentials end with the tab, without any event: rollups on the device must not outlive them.

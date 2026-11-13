@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { attachmentRunId, expireAttachments, selectExpiredRuns, type StoredAttachment } from '../src/expire.ts';
 
-const s3 = { bucket: 'acme', region: 'eu-north-1', prefix: '/jsonl-report/', endpoint: '', pathStyle: false, dataSource: 'bucket' as const, dataPrefix: 'qaily-data' };
+const s3 = { bucket: 'acme', region: 'eu-north-1', prefix: '/jsonl-report/', endpoint: '', pathStyle: false, dataSource: 'bucket' as const, dataPrefix: 'qaily-data', transport: 'cors' as const };
 const NOW = new Date('2026-11-12T12:00:00Z');
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
 

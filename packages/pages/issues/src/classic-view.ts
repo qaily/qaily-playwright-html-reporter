@@ -185,7 +185,7 @@ class IssuesClassic extends LitElement {
       const map = new Map<string, string>();
       await Promise.all(
         [...first].map(async ([testId, path]) => {
-          const url = await this.ctx.artifacts.url(runId, path, { fresh }).catch(() => null);
+          const url = await this.ctx.artifacts.imageUrl(runId, path, { fresh }).catch(() => null);
           if (url) map.set(testId, url);
         }),
       );

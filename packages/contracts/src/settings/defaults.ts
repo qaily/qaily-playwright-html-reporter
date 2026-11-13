@@ -75,7 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pathMap: [],
     traceViewer: '',
     github: { apiBase: 'https://api.github.com', owner: '', repo: '', branch: 'main', dataPath: 'data' },
-    s3: { bucket: '', region: 'eu-north-1', prefix: 'jsonl-report', endpoint: '', pathStyle: false, dataSource: 'website', dataPrefix: 'qaily-data' },
+    s3: { bucket: '', region: 'eu-north-1', prefix: 'jsonl-report', endpoint: '', pathStyle: false, dataSource: 'website', dataPrefix: 'qaily-data', transport: 'cors' },
   },
 
   coverage: {

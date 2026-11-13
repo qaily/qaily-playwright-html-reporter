@@ -6,6 +6,12 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Added
+
+- Storage bridge, for storage whose CORS rules you can't change (e.g. Dell ECS): `qaily-report bridge --origin <site>`
+  uploads a small page to the data folder, and with Settings → Connections → **Storage access** set to **Bridge**, the
+  report reads the bucket through it. Each viewer can switch it on or off for themselves.
+
 ## [1.0.1-beta.2] - 2026-11-13
 
 ### Added

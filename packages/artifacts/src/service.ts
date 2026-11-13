@@ -10,6 +10,8 @@ import {
   type Settings,
 } from '@qaily/contracts';
 import { isExpired, isTemporary, maskKeyId, parseCredentials, type AwsCredentials } from './credentials.ts';
+import { BRIDGE_FILE } from './bridge-page.ts';
+import { StorageBridge, isBridgeError, type BridgeHost } from './bridge.ts';
 import { presignS3 } from './sigv4.ts';
 
 // Attachment links are signed when a test opens and may be used much later, by a lazy image or a trace link.
@@ -30,7 +32,11 @@ export interface ArtifactServiceOptions {
   s3: () => Settings['connections']['s3'];
   /** Runs when the viewer forgets the credentials, after they are gone. */
   onForget?: () => void;
+  /** Browser parts for the storage bridge; tests replace them. */
+  bridgeHost?: BridgeHost;
 }
+
+const corsHint = () => `Check that the bucket's CORS rules allow ${globalThis.location?.origin ?? 'this site'}, and your network connection.`;
 
 /** S3 object key of an attachment: <prefix>/<run_id>/<attachment path>. */
 export function artifactKey(prefix: string, runId: string, path: string): string {
@@ -43,6 +49,9 @@ export class ArtifactService implements ArtifactsApi {
   private opts: ArtifactServiceOptions;
   private listeners = new Set<(s: ArtifactStatus) => void>();
   private cache = new Map<string, { url: string; until: number }>();
+  private bridge: StorageBridge | null = null;
+  /** blob: URLs of images read through the bridge, by attachment. */
+  private images = new Map<string, Promise<string | null>>();
 
   constructor(opts: ArtifactServiceOptions) {
     this.opts = opts;
@@ -104,7 +113,55 @@ export class ArtifactService implements ArtifactsApi {
     return this.sign(creds, [prefix, clean].filter(Boolean).join('/'), DATA_LINK_SECONDS, undefined, method);
   }
 
-  private sign(creds: AwsCredentials, key: string, expiresIn: number, downloadName?: string, method: 'GET' | 'PUT' = 'GET'): Promise<string> {
+  /** True when the browser reads the bucket through the storage bridge (Settings → Connections → Storage access). */
+  usesBridge(): boolean {
+    return this.mode === 'browser' && this.opts.s3().transport === 'bridge';
+  }
+
+  /** Signed URL of the bridge page in the data folder, served as HTML so it runs in the iframe. */
+  async bridgeUrl(): Promise<string | null> {
+    const creds = this.loadCredentials();
+    if (!creds) return null;
+    const prefix = this.opts.s3().dataPrefix.replace(/^\/+|\/+$/g, '');
+    return this.sign(creds, [prefix, BRIDGE_FILE].filter(Boolean).join('/'), DATA_LINK_SECONDS, undefined, 'GET', 'text/html; charset=utf-8');
+  }
+
+  /**
+   * Fetches a signed bucket URL: directly, or through the storage bridge when it is on. Everything that reads the
+   * bucket goes through here (attachments, report data, team settings).
+   */
+  storageFetch(url: string | URL, init?: RequestInit): Promise<Response> {
+    if (!this.usesBridge()) return fetch(url, init);
+    this.bridge ??= new StorageBridge(() => this.bridgeUrl(), { host: this.opts.bridgeHost });
+    return this.bridge.fetch(url, init);
+  }
+
+  /**
+   * URL for showing an image attachment. Through the bridge, a blob: URL of the downloaded image, since storage that
+   * needs the bridge usually also refuses images to other sites. Otherwise the signed link.
+   */
+  async imageUrl(runId: string, path: string, opts: { fresh?: boolean } = {}): Promise<string | null> {
+    if (!this.usesBridge()) return this.url(runId, path, opts);
+    const key = `${runId}/${path}`;
+    let hit = this.images.get(key);
+    if (!hit || opts.fresh) {
+      hit = this.fetchAttachment(runId, path)
+        .then(async (res) => URL.createObjectURL(await res.blob()))
+        .catch(() => null);
+      this.images.set(key, hit);
+      // Keep the latest few hundred; older ones are released.
+      if (this.images.size > 300) {
+        const [oldKey, old] = this.images.entries().next().value!;
+        this.images.delete(oldKey);
+        void old.then((u) => u && URL.revokeObjectURL(u));
+      }
+    }
+    const url = await hit;
+    if (!url) this.images.delete(key);
+    return url;
+  }
+
+  private sign(creds: AwsCredentials, key: string, expiresIn: number, downloadName?: string, method: 'GET' | 'PUT' = 'GET', contentType?: string): Promise<string> {
     const s3 = this.opts.s3();
     return presignS3({
       method,
@@ -118,6 +175,7 @@ export class ArtifactService implements ArtifactsApi {
       sessionToken: creds.sessionToken,
       expiresIn,
       downloadName,
+      contentType,
     });
   }
 
@@ -134,7 +192,7 @@ export class ArtifactService implements ArtifactsApi {
       if (!url) return 'unknown';
       // One byte is enough: only the status matters. Range is in the CORS rules already, for text attachments.
       const ctrl = new AbortController();
-      const res = await fetch(url, { headers: { Range: 'bytes=0-0' }, signal: ctrl.signal });
+      const res = await this.storageFetch(url, { headers: { Range: 'bytes=0-0' }, signal: ctrl.signal });
       ctrl.abort();
       return attachmentCheckOf(res.status);
     } catch {
@@ -161,10 +219,11 @@ export class ArtifactService implements ArtifactsApi {
     if (!url) throw new Error('This attachment is stored in S3-compatible storage. Connect credentials in Settings → Tokens to view it.');
     let res: Response;
     try {
-      res = await fetch(url, init);
-    } catch {
+      res = await this.storageFetch(url, init);
+    } catch (err) {
+      if (isBridgeError(err)) throw err;
       // A browser hides the reason from scripts; missing CORS rules are the usual one (images still load without them).
-      throw new Error(`Could not read ${path} from storage. Check that the bucket's CORS rules allow ${globalThis.location?.origin ?? 'this site'}, and your network connection.`);
+      throw new Error(`Could not read ${path} from storage. ${corsHint()}`);
     }
     if (res.status === 404 && this.mode === 'local') {
       // The local server says exactly why (e.g. no bucket configured).
@@ -194,6 +253,11 @@ export class ArtifactService implements ArtifactsApi {
   disconnect(): void {
     this.opts.secrets.forget('awsCredentials');
     this.cache.clear();
+    // Images read through the bridge are copies in memory: forgetting the credentials drops them too.
+    for (const url of this.images.values()) void url.then((u) => u && URL.revokeObjectURL(u));
+    this.images.clear();
+    this.bridge?.close();
+    this.bridge = null;
     this.emit();
     this.opts.onForget?.();
   }

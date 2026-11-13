@@ -110,7 +110,8 @@ export class TestDetail extends LitElement {
     this.urlsFor = key;
     this.retried.clear();
     const entries = await Promise.all(
-      atts.map(async (a) => [a.path, await this.ctx.artifacts.url(this.runId, a.path).catch(() => null)] as const),
+      // Images through imageUrl: with the storage bridge on, they become blob: URLs.
+      atts.map(async (a) => [a.path, await (a.type.startsWith('image/') ? this.ctx.artifacts.imageUrl(this.runId, a.path) : this.ctx.artifacts.url(this.runId, a.path)).catch(() => null)] as const),
     );
     if (this.urlsFor !== key) return;
     this.urls = new Map(entries);
@@ -127,7 +128,7 @@ export class TestDetail extends LitElement {
     if (this.retried.has(a.path)) return;
     this.retried.add(a.path);
     const key = this.urlsFor;
-    const url = await this.ctx.artifacts.url(this.runId, a.path, { fresh: true }).catch(() => null);
+    const url = await this.ctx.artifacts.imageUrl(this.runId, a.path, { fresh: true }).catch(() => null);
     if (url && this.urlsFor === key && url !== this.urls.get(a.path)) this.urls = new Map(this.urls).set(a.path, url);
   }
 

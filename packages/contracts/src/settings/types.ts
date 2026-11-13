@@ -54,7 +54,17 @@ export interface Settings {
     /** Self-hosted Playwright trace viewer (path relative to the report, or a URL); '' uses trace.playwright.dev. */
     traceViewer: string;
     github: { apiBase: string; owner: string; repo: string; branch: string; dataPath: string };
-    s3: { bucket: string; region: string; prefix: string; endpoint: string; pathStyle: boolean; dataSource: 'website' | 'bucket'; dataPrefix: string };
+    s3: {
+      bucket: string;
+      region: string;
+      prefix: string;
+      endpoint: string;
+      pathStyle: boolean;
+      dataSource: 'website' | 'bucket';
+      dataPrefix: string;
+      /** How the browser reads the bucket: directly (needs CORS rules), or through the storage bridge page in the bucket. */
+      transport: 'cors' | 'bridge';
+    };
   };
   coverage: {
     /** Display names of the four levels: component, scenario, feature, area. */

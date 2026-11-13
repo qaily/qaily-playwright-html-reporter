@@ -2,6 +2,7 @@
 // from a bucket. They travel with the data: point the report at another data folder and that folder's lanes, rules
 // and thresholds come with it. Saving needs a key that can write to the data folder, and CORS that allows PUT.
 
+import { isBridgeError } from './bridge.ts';
 import { withoutBucketConnection, type SettingsLayer } from '@qaily/contracts';
 import type { ArtifactService } from './service.ts';
 
@@ -59,7 +60,8 @@ export class BucketTeamSettings {
     let res: Response;
     try {
       res = await this.fetch(url, { method: 'PUT', body, headers: { 'Content-Type': 'application/json' } });
-    } catch {
+    } catch (err) {
+      if (isBridgeError(err)) throw err;
       throw new Error(`Could not save to the bucket. Its CORS rules must allow PUT from ${globalThis.location?.origin ?? 'this site'}.`);
     }
     if (res.status === 403) {

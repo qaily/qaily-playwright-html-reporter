@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TEAM_SETTINGS_FILE, s3EndpointUrl } from '@qaily/artifacts';
+import { BRIDGE_FILE, TEAM_SETTINGS_FILE, s3EndpointUrl } from '@qaily/artifacts';
 import { withoutBucketConnection, type Catalog, type SettingsLayer } from '@qaily/contracts';
 import type { S3Config } from './s3-signer.ts';
 
@@ -72,7 +72,8 @@ export function commonArgs(o: { s3: S3Config; profile?: string }, api: 's3' | 's
 
 // Kept with the website, not in the bucket: settings say where the bucket is, and AI notes are committed to the repo.
 // Team settings in the bucket are written on their own (see publishTeamSettings), never by a folder sync.
-const SITE_ONLY = ['--exclude', 'settings.json', '--exclude', 'ai/*', '--exclude', TEAM_SETTINGS_FILE];
+// The storage bridge page is uploaded by `qaily-report bridge` only.
+const SITE_ONLY = ['--exclude', 'settings.json', '--exclude', 'ai/*', '--exclude', TEAM_SETTINGS_FILE, '--exclude', BRIDGE_FILE];
 
 /** Data upload, then the catalog on its own: viewers must never see a catalog that points at files not there yet. */
 export function publishArgs(o: PublishOptions): string[][] {

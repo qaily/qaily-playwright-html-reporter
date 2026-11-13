@@ -13,6 +13,8 @@ const USAGE = `Usage:
   qaily-report pull    --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
   qaily-report publish --out <data dir> [--bucket b --region r --prefix p --data-prefix d --endpoint url] [--aws-profile name]
                        [--team-settings seed|replace|skip] [--allow-shrink]
+  qaily-report bridge --origin <report origin>[,<origin>] [--out <data dir>] [--bucket b --region r --prefix p --data-prefix d
+                       --endpoint url] [--aws-profile name] [--dry-run]
   qaily-report trace-viewer --out <site dir>/trace [--from <test project dir>]
   qaily-report expire-attachments --older-than <days> [--out <data dir>] [--bucket b --region r --prefix p --endpoint url]
                        [--aws-profile name] [--dry-run] [--all-versions]
@@ -27,6 +29,9 @@ const USAGE = `Usage:
   expire-attachments deletes <prefix>/<run>/attachments/ of runs whose attachments are all older than <days>, and keeps
   the rest of each run folder. Run it on a schedule. --all-versions also deletes old versions in a versioned bucket.
 
+  bridge uploads qaily-bridge.html to the data folder, for storage whose CORS rules you can't change (e.g. Dell ECS).
+  The report then reads the bucket through it when Settings → Connections → Storage access is Bridge. --origin is the
+  report's site, e.g. https://org.github.io; only those sites may use it. --dry-run prints the page instead.
   trace-viewer copies Playwright's trace viewer from the test project's playwright-core, so it matches the Playwright that
   recorded the traces. Set Settings → Connections → Trace viewer to where it is (e.g. trace/); traces then open there
   without CORS rules for it. serve provides it at /trace/ by itself when it runs in a folder with Playwright installed.
@@ -71,6 +76,7 @@ export async function main(argv: string[]): Promise<void> {
       'dry-run': { type: 'boolean' },
       'all-versions': { type: 'boolean' },
       from: { type: 'string' },
+      origin: { type: 'string', multiple: true },
     },
   });
   const log = (msg: string) => console.log(`[qaily] ${msg}`);
@@ -181,6 +187,25 @@ export async function main(argv: string[]): Promise<void> {
       if (teamSettings !== 'seed' && teamSettings !== 'replace' && teamSettings !== 'skip') throw new Error('--team-settings must be seed, replace or skip');
       await (command === 'pull' ? pull : publish)({ s3, dataDir: values.out, profile: values['aws-profile'], teamSettings, allowShrink: values['allow-shrink'], log });
       log(command === 'pull' ? 'Pulled the published report data' : 'Published the report data');
+      return;
+    }
+    case 'bridge': {
+      const origins = (values.origin ?? []).flatMap((o) => o.split(','));
+      if (!origins.length) throw new Error(`--origin is required, e.g. --origin https://org.github.io\n\n${USAGE}`);
+      const { uploadBridge } = await import('./bridge.ts');
+      const { readS3Config } = await import('./s3-signer.ts');
+      const team = readS3Config(values.out ?? 'data');
+      const s3 = {
+        ...team,
+        endpoint: values.endpoint ?? team.endpoint,
+        bucket: values.bucket ?? team.bucket,
+        region: values.region ?? team.region,
+        prefix: values.prefix ?? team.prefix,
+        dataPrefix: values['data-prefix'] ?? team.dataPrefix,
+      };
+      if (!s3.bucket) throw new Error('No bucket configured. Pass --bucket or set it in <data dir>/settings.json.');
+      const page = await uploadBridge({ s3, origins, profile: values['aws-profile'], dryRun: values['dry-run'], log });
+      if (values['dry-run']) console.log(page);
       return;
     }
     case 'trace-viewer': {

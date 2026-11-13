@@ -77,6 +77,11 @@ export interface ArtifactsApi {
    * unknown: no credentials yet, or no answer (network, CORS).
    */
   check(runId: string, path: string): Promise<AttachmentCheck>;
+  /**
+   * URL for showing an image attachment in the page: the signed link, or with the storage bridge on, a blob: URL of
+   * the downloaded image. Null when credentials are needed first or it can't be read.
+   */
+  imageUrl(runId: string, path: string, opts?: { fresh?: boolean }): Promise<string | null>;
   /** Fetches a whole attachment, e.g. a trace to hand to the trace viewer. Throws with a readable message. */
   blob(runId: string, path: string): Promise<Blob>;
   /** Fetches a text attachment, cut at maxBytes. */

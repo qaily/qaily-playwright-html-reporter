@@ -13,6 +13,8 @@ export interface PresignOptions {
   now?: Date;
   /** Makes the browser save the file under this name (sent as response-content-disposition). */
   downloadName?: string;
+  /** Makes storage send the file with this Content-Type (response-content-type), e.g. text/html for the bridge page. */
+  contentType?: string;
   /** Override the endpoint host, e.g. "examplebucket.s3.amazonaws.com". Default: <bucket>.s3.<region>.amazonaws.com */
   host?: string;
   /** S3-compatible service, e.g. "storage.googleapis.com" or "http://minio.local:9000". Default: AWS. */
@@ -97,6 +99,7 @@ export async function presignS3(o: PresignOptions): Promise<string> {
   if (o.downloadName) {
     params['response-content-disposition'] = `attachment; filename="${o.downloadName.replace(/["\\\r\n]/g, '_')}"`;
   }
+  if (o.contentType) params['response-content-type'] = o.contentType;
   const query = Object.keys(params)
     .sort()
     .map((k) => `${uriEncode(k)}=${uriEncode(params[k])}`)
