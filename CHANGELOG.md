@@ -6,6 +6,8 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+## [1.0.1-beta.5] - 2026-11-16
+
 ### Added
 
 - `qaily-report show`: one command that builds the report from `reports/data` and serves it. `show --sync` and
@@ -80,7 +82,8 @@ First version on npm.
 - `expire-attachments --older-than <days>` deletes the attachments of old runs and keeps the rest of each run folder;
   `--all-versions` also removes old versions in a versioned bucket.
 
-[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.4...HEAD
+[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.5...HEAD
+[1.0.1-beta.5]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.5
 [1.0.1-beta.4]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.4
 [1.0.1-beta.3]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.3
 [1.0.1-beta.2]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.2
