@@ -1,0 +1,98 @@
+# Mode 1: GitHub Pages only, no bucket.
+#
+# Every run: test, add the run to the report data, deploy the site with that data and this run's attachments.
+# The report data (small: rollups and JSONL) is kept between runs in a `report-data` branch, so the history grows
+# run by run. Attachments (screenshots, traces) are published only for the runs of the latest deploy.
+#
+# Setup:
+#   - Settings → Pages → Source: GitHub Actions.
+#   - Commit report-data/settings.json (lanes, thresholds, "traceViewer": "trace/"). It is copied into the data.
+#   - The first run creates the `report-data` branch.
+name: Tests and report
+
+on:
+  push:
+    branches: [main]
+  # Example only: a nightly test run at 06:00 UTC, even on days without commits. The report doesn't need it; every
+  # run, however it starts, adds itself to the report. Change the time or remove these lines.
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write # pushes the report data to the report-data branch
+  pages: write
+  id-token: write
+
+concurrency:
+  group: report
+  cancel-in-progress: false
+
+jobs:
+  test-and-report:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
+      # The report data of earlier runs, from the report-data branch (created on the first run).
+      - name: Get the report history
+        if: always()
+        run: |
+          if git fetch --depth 1 origin report-data; then
+            git worktree add report-history FETCH_HEAD
+          else
+            # First run: a new branch with nothing but the report data.
+            git worktree add --detach report-history
+            git -C report-history checkout -q --orphan report-data
+            git -C report-history rm -rqf .
+          fi
+          cp report-data/settings.json report-history/settings.json
+
+      # Adds this run. build keeps the earlier runs, whose folders this job doesn't have.
+      - name: Build the report
+        if: always()
+        run: npx qaily-report build --in reports/data --out report-history
+
+      - name: Save the report history
+        if: always()
+        run: |
+          cd report-history
+          git add -A
+          git -c user.name='github-actions[bot]' -c user.email='github-actions[bot]@users.noreply.github.com' commit -qm "Report data" || exit 0
+          git push origin HEAD:report-data
+
+      - name: Assemble the site
+        if: always()
+        run: |
+          cp -r node_modules/@qaily/playwright-html-reporter/app site
+          cp -r report-history site/data
+          rm -rf site/data/.git
+          # This run's screenshots and traces, next to its data.
+          for dir in reports/data/*/; do
+            run=$(basename "$dir")
+            if [ -d "$dir/attachments" ]; then mkdir -p "site/data/runs/$run" && cp -r "$dir/attachments" "site/data/runs/$run/"; fi
+          done
+          # Playwright's trace viewer from this project's Playwright (settings.json: "traceViewer": "trace/").
+          npx qaily-report trace-viewer --out site/trace
+
+      - uses: actions/configure-pages@v5
+        if: always()
+      - uses: actions/upload-pages-artifact@v3
+        if: always()
+        with:
+          path: site
+      - id: deployment
+        if: always()
+        uses: actions/deploy-pages@v4

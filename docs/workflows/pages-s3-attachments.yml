@@ -1,0 +1,88 @@
+# Mode 2: GitHub Pages + bucket for attachments ("Website" data source).
+#
+# Every run: test, upload the run folder to the bucket (attachments included), rebuild the report from every run in
+# the bucket, deploy the site with the dashboard data. Screenshots, traces and logs stay in the bucket; viewers
+# connect their own credentials to open them. Dashboards need no credentials.
+#
+# Setup:
+#   - Settings → Pages → Source: GitHub Actions.
+#   - Commit report-data/settings.json with the bucket (see the README, "Settings for each mode").
+#   - Repository secrets S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY: a key that can upload to and list the run folders
+#     (docs/storage.md, "Permissions"). On AWS you can use an OIDC role instead (aws-actions/configure-aws-credentials).
+#   - CORS on the bucket for the site, or the storage bridge (README, "Reading the bucket from the browser").
+name: Tests and report
+
+on:
+  push:
+    branches: [main]
+  # Example only: a nightly test run at 06:00 UTC, even on days without commits. The report doesn't need it; every
+  # run, however it starts, adds itself to the report. Change the time or remove these lines.
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
+      # The run folder from reports/data to the bucket, attachments included. Its .sync-complete marker goes last,
+      # so a half-uploaded run never reaches the report.
+      - name: Upload the run
+        if: always()
+        run: npx qaily-report upload
+
+  report:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: report
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4 # brings report-data/settings.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Every run folder from the bucket, without attachments, then the dashboard data.
+      # If run folders are deleted after a while (a lifecycle rule), keep the data in the bucket between builds:
+      # add `npx qaily-report pull` before this step and `npx qaily-report publish` after it.
+      - run: npx qaily-report sync
+
+      - name: Assemble the site
+        run: |
+          cp -r node_modules/@qaily/playwright-html-reporter/app site
+          cp -r report-data site/data
+          npx qaily-report trace-viewer --out site/trace
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

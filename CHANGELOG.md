@@ -6,6 +6,23 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Added
+
+- `qaily-report show`: one command that builds the report from `reports/data` and serves it. `show --sync` and
+  `show --pull` serve from a bucket instead.
+- `qaily-report upload`: uploads run folders to the bucket, attachments included, with the `.sync-complete` marker last.
+  It replaces the `aws s3 sync` loop in CI.
+- `qaily-report help`, and `--path-style` for every bucket command.
+- Ready-to-copy GitHub Actions workflows for the three hosting modes and for retention, in `docs/workflows/`.
+
+### Changed
+
+- Every command has defaults: run folders in `reports/data` (the reporter's default), report data in `report-data`.
+  `expire-attachments` and `bridge` used `data` before: pass `--out data` if you relied on that.
+- An unknown command now fails with the usage, instead of printing it and succeeding.
+- New README, organised as a setup guide. `docs/s3-artifacts.md` is now `docs/storage.md`, by provider, with CORS,
+  permissions and AWS CLI credentials. `docs/report-site.example.yml` is replaced by `docs/workflows/`.
+
 ## [1.0.1-beta.4] - 2026-11-16
 
 ## [1.0.1-beta.3] - 2026-11-13

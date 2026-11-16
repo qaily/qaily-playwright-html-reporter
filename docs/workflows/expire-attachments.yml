@@ -1,0 +1,28 @@
+# Retention: deletes the attachments (screenshots, traces, videos) of runs older than N days, every night, and keeps
+# the rest of each run folder (manifest, JSONL), so the dashboards and anything else reading the run folders keep
+# working. Change the number of days here; the bucket's own settings stay untouched.
+name: Expire attachments
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_EXPIRE_ACCESS_KEY_ID }} # can list the run folders and delete attachments
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_EXPIRE_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4 # report-data/settings.json says where the bucket is
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Add --all-versions for a versioned bucket you can't give a noncurrent-version lifecycle rule.
+      - run: npx qaily-report expire-attachments --older-than 3

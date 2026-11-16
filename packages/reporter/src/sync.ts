@@ -187,6 +187,11 @@ export function awsCapture(args: string[], s3: S3Config): Promise<{ code: number
   });
 }
 
+/** Runs the AWS CLI with its output shown; rejects when it fails. */
+export function runAws(args: string[], s3: S3Config, log?: (msg: string) => void): Promise<void> {
+  return aws(args, s3, log);
+}
+
 function aws(args: string[], s3: S3Config, log?: (msg: string) => void): Promise<void> {
   log?.(`aws ${args.join(' ')}`);
   return new Promise((resolve, reject) => {

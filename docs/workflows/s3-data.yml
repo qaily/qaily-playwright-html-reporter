@@ -1,0 +1,67 @@
+# Mode 3, part 1: all report data in the bucket ("Bucket" data source).
+#
+# Every run: test, upload the run folder, rebuild the report data and publish it to the bucket. The site is not
+# redeployed: it reads the data from the bucket, so viewers see the new run on their next load. Deploy the site with
+# s3-data-site.yml, once and whenever the report version or report-data/settings.json changes.
+#
+# Setup:
+#   - Commit report-data/settings.json with the bucket and "dataSource": "bucket" (README, "Settings for each mode").
+#   - Repository secrets S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY: a key that can upload the run folders and read and
+#     write the report data folder (docs/storage.md, "Permissions").
+#   - CORS on the bucket for the site (GET, HEAD, and PUT for team settings), or the storage bridge.
+name: Tests and report data
+
+on:
+  push:
+    branches: [main]
+  # Example only: a nightly test run at 06:00 UTC, even on days without commits. The report doesn't need it; every
+  # run, however it starts, adds itself to the report. Change the time or remove these lines.
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - name: Upload the run
+        if: always()
+        run: npx qaily-report upload
+
+  report-data:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    concurrency:
+      group: report-data
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4 # brings report-data/settings.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # What was published last time: build then only rebuilds months that changed, and keeps runs whose folders
+      # have been deleted from the bucket.
+      - run: npx qaily-report pull
+      # Every run folder from the bucket, without attachments, then the dashboard data.
+      - run: npx qaily-report sync
+      # Changed files to the bucket, catalog.json last. Viewers see the new run on their next load.
+      - run: npx qaily-report publish

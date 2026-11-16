@@ -1,0 +1,50 @@
+# Mode 3, part 2: deploys the site for the Bucket data source.
+#
+# The site holds only the report app, report-data/settings.json (where the bucket is) and the trace viewer. It changes
+# only when the report version or the settings change, so this runs on those changes, or by hand.
+name: Report site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - report-data/settings.json
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: report-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Assemble the site
+        run: |
+          cp -r node_modules/@qaily/playwright-html-reporter/app site
+          mkdir -p site/data
+          cp report-data/settings.json site/data/settings.json
+          npx qaily-report trace-viewer --out site/trace
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
