@@ -6,6 +6,8 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+## [1.0.1-beta.7] - 2026-11-17
+
 ### Added
 
 - Settings → Lanes is a guided builder:
@@ -109,7 +111,8 @@ First version on npm.
 - `expire-attachments --older-than <days>` deletes the attachments of old runs and keeps the rest of each run folder;
   `--all-versions` also removes old versions in a versioned bucket.
 
-[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.6...HEAD
+[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.7...HEAD
+[1.0.1-beta.7]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.7
 [1.0.1-beta.6]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.6
 [1.0.1-beta.5]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.5
 [1.0.1-beta.4]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.4
