@@ -15,6 +15,8 @@ export interface CoverageScope {
   toMs?: number;
   /** Only these branches (when given). */
   branches?: string[];
+  /** Only these runs (when given): the runs that pass the lane and environment filters. */
+  runIds?: string[];
 }
 
 /** Steps the framework adds around every test; never coverage. */
@@ -65,6 +67,7 @@ function scopeWhere(scope: CoverageScope): string {
   if (scope.fromMs !== undefined) where.push(`epoch_ms(started_at) >= ${Math.floor(scope.fromMs)}`);
   if (scope.toMs !== undefined) where.push(`epoch_ms(started_at) < ${Math.floor(scope.toMs)}`);
   if (scope.branches?.length) where.push(`branch IN (${scope.branches.map(lit).join(', ')})`);
+  if (scope.runIds) where.push(scope.runIds.length ? `run_id IN (${scope.runIds.map(lit).join(', ')})` : 'false');
   return where.length ? `WHERE ${where.join(' AND ')}` : '';
 }
 

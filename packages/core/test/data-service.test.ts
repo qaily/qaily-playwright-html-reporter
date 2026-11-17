@@ -135,7 +135,7 @@ describe('routes and filters', () => {
 
   it('omits default filters from the URL and rejects bad values', () => {
     const f = filtersFromParams({ range: '7', branch: 'all' }, DEFAULT_SETTINGS);
-    expect(f).toEqual({ rangeDays: 7, branch: 'all', lanes: [] });
+    expect(f).toEqual({ rangeDays: 7, branch: 'all', lanes: [], environments: [] });
     expect(filtersToParams({ ...f, rangeDays: DEFAULT_SETTINGS.display.defaultRangeDays, branch: 'main' }, DEFAULT_SETTINGS)).toEqual({});
     expect(filtersFromParams({ range: '-1', branch: 'weird' }, DEFAULT_SETTINGS).rangeDays).toBe(DEFAULT_SETTINGS.display.defaultRangeDays);
   });

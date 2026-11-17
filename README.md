@@ -349,9 +349,37 @@ For Google Cloud Storage, MinIO or ECS, add `endpoint` and `pathStyle` from [sec
 
 ### Lanes
 
-A lane is a line of runs on the Monitoring page and a filter elsewhere. Its `match` fields are all optional: `category`
-and `branch` are regular expressions, and `environment` must match exactly. Each run joins the first lane that matches,
-so list specific lanes first.
+A lane is a line of runs on the Monitoring page and a filter elsewhere. Lanes group whole **runs**, not single tests,
+and look at three values of each run:
+
+| Condition | Tested against |
+|---|---|
+| Category | The reporter option `category`, e.g. `'ui:web'`. Not a test title, file, tag or project |
+| Environment | The reporter option `environment`, e.g. `'staging'` (exact match) |
+| Branch | The git branch of the run |
+| Started | The time of day the run started, e.g. between `22:00` and `06:00` for nightly runs |
+
+Each run joins the first lane that matches, so list specific lanes first and keep a catch-all (no conditions) last.
+A nightly lane, for example, goes above the general lane for the same category, or that lane takes the nightly runs.
+
+A start-time window is saved with its own time zone (`"time": { "from": "22:00", "to": "06:00", "zone": "Europe/Vilnius" }`),
+so a run lands in the same lane for every viewer. A window whose `from` is after its `to` runs past midnight.
+
+Edit lanes in **Settings → Lanes → For the team**. The builder offers the values your runs from the last 90 days
+reported, shows how many runs each lane gets, warns when a lane above takes a lane's runs, lists runs that are in no lane
+(with a button to create one), and can generate starter lanes from your runs. Conditions are "is", "is one of",
+"starts with", "ends with" and "contains"; "matches regex" is there for anything else.
+
+Environments are not a fixed list: Monitoring's environment chips show every `environment` value your runs report.
+Set an environment on a lane to get one lane per environment, or leave it at "any environment" to keep them in one
+lane and filter with the chips.
+
+Tests, Issues, Heat Map, Weekly and Monthly have **Lane** and **Environment** filters in the filter bar. Pick one or
+more of each, and only runs that match are counted. They stay in the URL (`?lanes=web-dev&env=staging`), so they carry
+over when you switch between those pages. Monitoring keeps its own environment chips. A run opened from a link is
+always shown, even when the filters would hide it.
+
+In the settings file the conditions are stored as `match`, with `category` and `branch` as regular expressions:
 
 ```json
 { "id": "web-staging", "label": "Web · Staging", "match": { "category": "^ui:web$", "environment": "staging" } }

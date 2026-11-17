@@ -9,7 +9,7 @@ export default definePage<WeeklyModel>({
   icon: 'calendar-week',
   order: 20,
   contractVersion: PAGE_CONTRACT_VERSION,
-  filters: ['branch'],
+  filters: ['branch', 'lanes', 'environments'],
   load: (ctx, params) => loadWeekly(ctx, params),
   views: {
     classic: () => import('./classic-view.ts').then((m) => m.default),

@@ -2,7 +2,7 @@
 // Every step is guarded, so a broken page shows an error card and the shell keeps working.
 
 import type { PageContext, PageModule, RouteParams, ViewHandle } from '@qaily/contracts';
-import type { ThemeManager } from '@qaily/core';
+import { pageFilters, type ThemeManager } from '@qaily/core';
 import type { PageEntry } from './pages.ts';
 
 export interface HostState {
@@ -60,6 +60,7 @@ export class PageHost {
     try {
       page = await this.module(entry);
       if (seq !== this.seq) return;
+      ctx = { ...ctx, filters: pageFilters(ctx.filters, page.filters) };
       this.onState({ page, view: this.mounted?.view ?? null, status: 'loading' });
 
       let view = this.themes.resolveView(page, ctx.settings);

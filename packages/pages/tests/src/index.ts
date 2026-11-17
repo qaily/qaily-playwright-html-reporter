@@ -9,7 +9,7 @@ export default definePage<TestsModel>({
   icon: 'list',
   order: 50,
   contractVersion: PAGE_CONTRACT_VERSION,
-  filters: ['rangeDays', 'branch'],
+  filters: ['rangeDays', 'branch', 'lanes', 'environments'],
   load: (ctx, params) => loadTests(ctx, params),
   views: {
     classic: () => import('./classic-view.ts').then((m) => m.default),

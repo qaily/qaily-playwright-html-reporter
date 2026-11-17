@@ -10,7 +10,7 @@ import type {
   TestSummaryRecord,
 } from '@qaily/contracts';
 import { issueKey, laneOf } from '@qaily/contracts';
-import { branchMatches, passRate, rangeFromDays } from '@qaily/core';
+import { passRate, rangeFromDays, runPassesFilters } from '@qaily/core';
 
 export interface Attempt {
   detail: TestDetailsRecord | null;
@@ -91,7 +91,7 @@ export function runOption(run: RunRow, ctx: PageContext): RunOption {
 
 export async function loadTests(ctx: PageContext, params: RouteParams): Promise<TestsModel> {
   const { settings, filters, data } = ctx;
-  const runs = (await data.runs(rangeFromDays(filters.rangeDays, ctx.now()))).filter((r) => branchMatches(r.branch, filters, settings));
+  const runs = (await data.runs(rangeFromDays(filters.rangeDays, ctx.now()))).filter((r) => runPassesFilters(r, filters, settings));
   let options = runs.map((r) => runOption(r, ctx));
 
   let current = params.run ? options.find((o) => o.run.run_id === params.run) ?? null : options.find((o) => o.run.ended_at) ?? options[0] ?? null;

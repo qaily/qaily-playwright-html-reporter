@@ -6,7 +6,7 @@ import {
   type RouteParams,
   type RunRow,
 } from '@qaily/contracts';
-import { branchMatches, rangeFromDays } from '@qaily/core';
+import { hasRunFilters, rangeFromDays, runPassesFilters } from '@qaily/core';
 import { cellsSql, unmappedSql, usableRules, type CellRow, type CoverageScope, type UnmappedRow } from './sql.ts';
 import { buildSheet, type SheetComponent } from './sheet.ts';
 
@@ -89,7 +89,7 @@ function sum(ctx: PageContext, list: (CellStat | undefined)[]): CellStat | undef
 export async function loadHeatmap(ctx: PageContext, params: RouteParams): Promise<HeatmapModel> {
   const { settings, filters, data } = ctx;
   const window = rangeFromDays(filters.rangeDays, ctx.now());
-  const runs = (await data.runs(window)).filter((r) => branchMatches(r.branch, filters, settings));
+  const runs = (await data.runs(window)).filter((r) => runPassesFilters(r, filters, settings));
   let run: RunRow | null = null;
   let range = window;
   const scope: CoverageScope = {};
@@ -103,6 +103,8 @@ export async function loadHeatmap(ctx: PageContext, params: RouteParams): Promis
     scope.fromMs = window.from.getTime();
     scope.toMs = window.to.getTime();
     if (filters.branch === 'main') scope.branches = settings.data.mainBranches;
+    // Lanes can't be written as SQL, so lane and environment filters limit the rows to the runs that pass them.
+    if (hasRunFilters(filters)) scope.runIds = runs.map((r) => r.run_id);
   }
 
   const { rules, errors } = usableRules(settings.coverage.rules);

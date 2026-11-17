@@ -9,7 +9,7 @@ export default definePage<MonthlyModel>({
   icon: 'calendar-month',
   order: 30,
   contractVersion: PAGE_CONTRACT_VERSION,
-  filters: ['branch'],
+  filters: ['branch', 'lanes', 'environments'],
   load: (ctx, params) => loadMonthly(ctx, params),
   views: {
     classic: () => import('./classic-view.ts').then((m) => m.default),

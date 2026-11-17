@@ -3,6 +3,7 @@
 
 import type { DayProblem, PageContext, PeriodDay, PeriodKpis, PeriodRun, RunRow, TestStat, TopTests } from '@qaily/contracts';
 import { laneOf, passRate } from '@qaily/contracts';
+import { hasRunFilters, runIdsSql, runPassesFilters } from './filters.ts';
 import { addDays, dayKey, dayParts } from './format.ts';
 import { sumCounts } from './runs.ts';
 
@@ -97,11 +98,23 @@ function branchSql(ctx: Pick<PageContext, 'settings' | 'filters'>): string {
   return ctx.filters.branch === 'main' ? `AND branch IN (${ctx.settings.data.mainBranches.map(quote).join(', ')})` : '';
 }
 
+/**
+ * The filter bar's restriction for test rows in [from, to). Lanes (regexes, time windows) can't be written as SQL,
+ * so with a lane or environment filter the rows are limited to the ids of the runs that pass it.
+ */
+async function filterSql(ctx: Pick<PageContext, 'settings' | 'filters' | 'data'>, from: Date, to: Date): Promise<string> {
+  if (!hasRunFilters(ctx.filters)) return branchSql(ctx);
+  // A day earlier too: a run that started just before `from` can have tests inside the period.
+  const runs = await ctx.data.runs({ from: new Date(from.getTime() - 86_400_000), to });
+  return `AND ${runIdsSql(runs.filter((r) => runPassesFilters(r, ctx.filters, ctx.settings)).map((r) => r.run_id))}`;
+}
+
 const range = (from: Date, to: Date) => `epoch_ms(started_at) >= ${from.getTime()} AND epoch_ms(started_at) < ${to.getTime()}`;
 
 /** Most failing, most flaky and slowest tests in [from, to). */
 export async function loadTopTests(ctx: Pick<PageContext, 'settings' | 'filters' | 'data'>, from: Date, to: Date, limit = 10): Promise<TopTests> {
   try {
+    const scope = await filterSql(ctx, from, to);
     const stats = await ctx.data.query<TestStat>(
       `SELECT test_id, any_value(title) AS title, any_value(file) AS file,
          count(*) FILTER (WHERE status <> 'skipped') AS runs,
@@ -112,7 +125,7 @@ export async function loadTopTests(ctx: Pick<PageContext, 'settings' | 'filters'
          arg_max(run_id, started_at) AS last_run_id,
          list_sort(list(DISTINCT suite) FILTER (WHERE suite IS NOT NULL)) AS suites
        FROM tests
-       WHERE ${range(from, to)} ${branchSql(ctx)}
+       WHERE ${range(from, to)} ${scope}
        GROUP BY test_id`,
       { from, to },
     );
@@ -144,12 +157,14 @@ export async function loadDayProblems(
   limit = 7,
 ): Promise<Record<string, DayProblem[]>> {
   // Bucketed here rather than in SQL, because days follow the display time zone.
-  const rows = await ctx.data
-    .query<ProblemRow>(
-      `SELECT test_id, title, file, project, status, run_id, epoch_ms(started_at) AS started_ms, suite
-       FROM tests
-       WHERE status IN ('failed', 'flaky') AND ${range(from, to)} ${branchSql(ctx)}`,
-      { from, to },
+  const rows = await filterSql(ctx, from, to)
+    .then((scope) =>
+      ctx.data.query<ProblemRow>(
+        `SELECT test_id, title, file, project, status, run_id, epoch_ms(started_at) AS started_ms, suite
+         FROM tests
+         WHERE status IN ('failed', 'flaky') AND ${range(from, to)} ${scope}`,
+        { from, to },
+      ),
     )
     .catch(() => []);
   return groupProblems(rows, ctx, limit);

@@ -9,7 +9,7 @@ export default definePage<IssuesModel>({
   icon: 'alert',
   order: 40,
   contractVersion: PAGE_CONTRACT_VERSION,
-  filters: ['rangeDays', 'branch'],
+  filters: ['rangeDays', 'branch', 'lanes', 'environments'],
   load: (ctx, params, signal) => loadIssues(ctx, params, signal),
   views: {
     classic: () => import('./classic-view.ts').then((m) => m.default),

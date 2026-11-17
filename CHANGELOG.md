@@ -6,6 +6,24 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Added
+
+- Settings → Lanes is a guided builder:
+  - Conditions read as "Category is ui:web" and offer the values your runs from the last 90 days reported.
+  - Each lane shows a live preview of the runs it gets, and warns when a lane above takes its runs.
+  - Runs that are in no lane are listed, with a button to create a lane for them, and starter lanes can be generated
+    from your runs.
+  - Regex is still there as an advanced option, with a tester against your real values.
+  - The settings format is unchanged.
+- Lanes can match the time of day a run started (`match.time`, e.g. 22:00–06:00 for nightly runs), in a time zone saved
+  with the lane.
+- **Lane** and **Environment** filters on Tests, Issues, Heat Map, Weekly and Monthly. They are multi-selects in the
+  filter bar, kept in the URL (`?lanes=…&env=…`) and carried between those pages.
+
+### Changed
+
+- Monitoring only uses the filters it shows: `?lanes=` in the URL no longer narrows its lanes.
+
 ## [1.0.1-beta.6] - 2026-11-17
 
 ### Fixed

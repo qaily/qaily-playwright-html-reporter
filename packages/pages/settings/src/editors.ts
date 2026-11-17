@@ -2,8 +2,9 @@
 // the settings view validates it against the field schema before saving.
 
 import type { Band, CoverageRule, FieldDef, HealthLevel, Lane, PageContext, PathMapping } from '@qaily/contracts';
-import { checkCoverageRule, evaluateRules, healthLevel } from '@qaily/contracts';
+import { checkCoverageRule, evaluateRules, healthLevel, isValidTimeZone } from '@qaily/contracts';
 import { LEVEL_GLYPH, TOKENS, html, live, nothing, styleMap, type TemplateResult } from '@qaily/ui';
+import './lanes-builder.ts';
 
 export interface EditorArgs {
   field: FieldDef;
@@ -86,43 +87,9 @@ function bandsEditor({ value, disabled, onChange, field }: EditorArgs): Template
   `;
 }
 
-function lanesEditor({ value, disabled, onChange }: EditorArgs): TemplateResult {
-  const lanes = value as Lane[];
-  const set = (i: number, patch: Partial<Lane> & { match?: Partial<Lane['match']> }) => {
-    const lane = lanes[i];
-    const match = { ...lane.match, ...patch.match };
-    for (const k of Object.keys(match) as (keyof Lane['match'])[]) if (!match[k]) delete match[k];
-    onChange(replaceAt(lanes, i, { ...lane, ...patch, match }));
-  };
-  const text = (i: number, v: string, label: string, apply: (v: string) => void, placeholder = '') =>
-    html`<input .value=${live(v)} aria-label=${label} placeholder=${placeholder} ?disabled=${disabled}
-      @change=${(e: Event) => apply(inputValue(e).trim())} data-row=${i} />`;
-  return html`
-    <div class="scroll">
-      <table class="rows">
-        <thead><tr><th>Id</th><th>Label</th><th>Category (regex)</th><th>Environment</th><th>Branch (regex)</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
-        <tbody>
-          ${lanes.map(
-            (l, i) => html`<tr>
-              <td>${text(i, l.id, 'Id', (v) => set(i, { id: v }))}</td>
-              <td>${text(i, l.label, 'Label', (v) => set(i, { label: v }))}</td>
-              <td>${text(i, l.match.category ?? '', 'Category', (v) => set(i, { match: { category: v } }), 'any')}</td>
-              <td>${text(i, l.match.environment ?? '', 'Environment', (v) => set(i, { match: { environment: v } }), 'any')}</td>
-              <td>${text(i, l.match.branch ?? '', 'Branch', (v) => set(i, { match: { branch: v } }), 'any')}</td>
-              <td class="actions">
-                <button ?disabled=${disabled || i === 0} @click=${() => onChange(move(lanes, i, -1))} aria-label="Move up"><q-icon name="arrow-up"></q-icon></button>
-                <button ?disabled=${disabled || i === lanes.length - 1} @click=${() => onChange(move(lanes, i, 1))} aria-label="Move down"><q-icon name="arrow-down"></q-icon></button>
-                <button ?disabled=${disabled || lanes.length === 1} @click=${() => onChange(lanes.filter((_, j) => j !== i))} aria-label="Remove lane"><q-icon name="trash"></q-icon></button>
-              </td>
-            </tr>`,
-          )}
-        </tbody>
-      </table>
-    </div>
-    <button ?disabled=${disabled} @click=${() => onChange([...lanes, { id: `lane-${lanes.length + 1}`, label: 'New lane', match: {} }])}>
-      <q-icon name="plus"></q-icon> Add lane
-    </button>
-  `;
+/** The guided lane builder (lanes-builder.ts): conditions with values from real runs and a live preview. */
+function lanesEditor({ value, disabled, onChange, ctx }: EditorArgs): TemplateResult {
+  return html`<q-lanes-builder .ctx=${ctx} .lanes=${value as Lane[]} ?disabled=${disabled} .onChange=${onChange}></q-lanes-builder>`;
 }
 
 function tokensEditor({ value, disabled, onChange }: EditorArgs): TemplateResult {
@@ -357,6 +324,8 @@ export function extraValidation(field: FieldDef, value: unknown): string | null 
     for (const l of lanes) {
       if (ids.has(l.id)) return `Lane id "${l.id}" is used twice`;
       ids.add(l.id);
+      const zone = l.match.time?.zone;
+      if (zone && !isValidTimeZone(zone)) return `Lane "${l.label}": "${zone}" is not a known time zone`;
       for (const re of [l.match.category, l.match.branch]) {
         if (!re) continue;
         try {

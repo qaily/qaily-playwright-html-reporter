@@ -1,5 +1,5 @@
 import type { RunCounts, RunRow, Settings } from '@qaily/contracts';
-import { laneOf } from '@qaily/contracts';
+import { isCatchAll, laneOf } from '@qaily/contracts';
 
 export function sumCounts(runs: readonly RunRow[]): RunCounts {
   const acc: RunCounts = { total: 0, passed: 0, failed: 0, flaky: 0, skipped: 0 };
@@ -25,5 +25,5 @@ export function groupByLane(runs: readonly RunRow[], settings: Settings): Map<st
 
 /** A lane with an empty match catches everything; hide it when it has no runs. */
 export function isCatchAllLane(lane: Settings['lanes'][number]): boolean {
-  return !lane.match.category && !lane.match.environment && !lane.match.branch;
+  return isCatchAll(lane);
 }

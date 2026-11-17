@@ -1,4 +1,4 @@
-import { LOCATION_PATHS, type Catalog, type LocationKey, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type ThemeInfo } from '@qaily/contracts';
+import { LOCATION_PATHS, NO_ENVIRONMENT, type Catalog, type LocationKey, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type ThemeInfo } from '@qaily/contracts';
 import {
   DataAccessError,
   FILTER_PARAMS,
@@ -8,6 +8,7 @@ import {
   formatHash,
   formatRelative,
   healthLevel,
+  rangeFromDays,
   type DataService,
   type Route,
   type Router,
@@ -21,6 +22,8 @@ import type { ArtifactService } from '@qaily/artifacts';
 import { LitElement, baseStyles, css, html, nothing, repeat } from '@qaily/ui';
 import { PageHost, type HostState } from './page-host.ts';
 import { PAGES, type PageEntry } from './pages.ts';
+import './multi-select.ts';
+import type { MultiOption } from './multi-select.ts';
 
 import type { DataLocation } from './location.ts';
 export { locationOf, personalFolder, type DataLocation } from './location.ts';
@@ -53,7 +56,11 @@ export class QailyShell extends LitElement {
     catalog: { state: true },
     toasts: { state: true },
     dataAccess: { state: true },
+    envOptions: { state: true },
   };
+  /** Environments seen in recent runs, for the Environment filter (null until read). */
+  declare envOptions: MultiOption[] | null;
+  private envKey = '';
   declare route: Route;
   declare host: HostState;
   declare theme: ThemeInfo;
@@ -73,6 +80,34 @@ export class QailyShell extends LitElement {
     this.catalog = null;
     this.toasts = [];
     this.dataAccess = null;
+    this.envOptions = null;
+  }
+
+  /**
+   * Reads the environments of the runs in the filter's range (at least 90 days, so Weekly and Monthly, which have
+   * no range, still get a useful list). Runs are cached per month, so this costs little after the page's own read.
+   */
+  private loadEnvOptions(rangeDays: number): void {
+    const days = Math.max(rangeDays, 90);
+    const key = `${days}|${this.catalog?.generatedAt ?? ''}`;
+    if (key === this.envKey) return;
+    this.envKey = key;
+    this.services.data
+      .runs(rangeFromDays(days, new Date()))
+      .then((runs) => {
+        if (key !== this.envKey) return;
+        const counts = new Map<string, number>();
+        for (const r of runs) {
+          const env = r.environment || NO_ENVIRONMENT;
+          counts.set(env, (counts.get(env) ?? 0) + 1);
+        }
+        this.envOptions = [...counts]
+          .sort(([a], [b]) => (a === NO_ENVIRONMENT ? 1 : b === NO_ENVIRONMENT ? -1 : a.localeCompare(b)))
+          .map(([value, n]) => ({ value, label: value === NO_ENVIRONMENT ? 'No environment set' : value, note: `${n} runs` }));
+      })
+      .catch(() => {
+        if (key === this.envKey) this.envOptions = [];
+      });
   }
 
   connectedCallback(): void {
@@ -273,6 +308,7 @@ export class QailyShell extends LitElement {
   render() {
     const used = new Set(this.host.page?.filters ?? []);
     const filters = this.filters;
+    if (used.has('environments')) this.loadEnvOptions(filters.rangeDays);
     const keep = filtersToParams(filters, this.settingsNow);
     const forced = this.services.themes.theme(this.settingsNow.display.theme).forcedColorScheme;
     return html`
@@ -320,6 +356,21 @@ export class QailyShell extends LitElement {
                     <option value="all" ?selected=${filters.branch === 'all'}>All branches</option>
                   </select></label
                 >`
+              : nothing}
+            ${used.has('lanes')
+              ? html`<q-multi-select label="Lane" allLabel="All lanes"
+                  .options=${this.settingsNow.lanes.map((l) => ({ value: l.id, label: l.label }))}
+                  .selected=${filters.lanes}
+                  @change=${(e: CustomEvent<string[]>) => this.setFilters({ lanes: e.detail })}></q-multi-select>`
+              : nothing}
+            ${used.has('environments')
+              ? html`<q-multi-select label="Environment" allLabel="All environments"
+                  .options=${this.envOptions ?? []}
+                  .selected=${filters.environments}
+                  @change=${(e: CustomEvent<string[]>) => this.setFilters({ environments: e.detail })}></q-multi-select>`
+              : nothing}
+            ${(used.has('lanes') && filters.lanes.length) || (used.has('environments') && filters.environments.length)
+              ? html`<button class="link clear" @click=${() => this.setFilters({ lanes: [], environments: [] })}>Clear lane and environment</button>`
               : nothing}
           </div>`
         : nothing}
@@ -442,6 +493,15 @@ export class QailyShell extends LitElement {
         padding: 8px 16px;
         border-bottom: 1px solid var(--q-border);
         background: var(--q-surface);
+      }
+      .filters .clear {
+        align-self: center;
+        font-size: 0.85rem;
+        border: none;
+        background: none;
+        padding: 0;
+        color: var(--q-accent);
+        text-decoration: underline;
       }
       .filters label {
         display: inline-flex;

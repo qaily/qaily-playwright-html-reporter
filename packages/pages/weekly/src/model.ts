@@ -1,8 +1,8 @@
 import type { DayProblem, HealthLevel, PageContext, PeriodDay, PeriodKpis, RouteParams, RunRow, TopTests } from '@qaily/contracts';
 import {
   addDays,
-  branchMatches,
   buildPeriodDays,
+  runPassesFilters,
   dayKey,
   groupByLane,
   isCatchAllLane,
@@ -67,7 +67,7 @@ export async function loadWeekly(ctx: PageContext, params: RouteParams): Promise
     loadTopTests(ctx, from, to),
     loadDayProblems(ctx, from, to),
   ]);
-  const runs = allRuns.filter((r) => branchMatches(r.branch, filters, settings));
+  const runs = allRuns.filter((r) => runPassesFilters(r, filters, settings));
   const toWeekRun = (run: RunRow): WeekRun => {
     const rate = passRate(run, settings.metrics);
     return { run, rate, level: run.ended_at ? ctx.health('passRate', rate) : 'none', running: !run.ended_at };

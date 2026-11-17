@@ -1,5 +1,5 @@
 import type { PageContext, TestStatus } from '@qaily/contracts';
-import { formatDateTime, formatDuration, formatPercent } from '@qaily/core';
+import { formatDateTime, formatDuration, formatPercent, hasRunFilters } from '@qaily/core';
 import { LitElement, STATUS_COLOR, STATUS_GLYPH, baseStyles, css, elementView, html, nothing, styleMap, suiteBadge } from '@qaily/ui';
 import './test-detail.ts';
 import type { RunOption, SpecNode, TestItem, TestsModel } from './model.ts';
@@ -181,7 +181,12 @@ class TestsClassic extends LitElement {
 
   render() {
     const m = this.model;
-    if (!m.current) return html`<q-state kind="empty" message="No runs in this range. Try a longer range or all branches."></q-state>`;
+    if (!m.current) {
+      const message = hasRunFilters(this.ctx.filters)
+        ? 'No runs match the Lane and Environment filters in this range. Clear them, or try a longer range or all branches.'
+        : 'No runs in this range. Try a longer range or all branches.';
+      return html`<q-state kind="empty" message=${message}></q-state>`;
+    }
     const visible = m.specs.map((s) => ({ node: s, tests: s.tests.filter((t) => this.passesFilters(t)) })).filter((x) => x.tests.length);
     const selected = this.selected ? m.tests.find((t) => t.summary.test_id === this.selected) ?? null : null;
     const similar = selected?.issueKey ? m.tests.filter((t) => t !== selected && t.issueKey === selected.issueKey) : [];

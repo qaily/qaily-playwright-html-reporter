@@ -198,7 +198,12 @@ export interface Filters {
   branch: 'main' | 'all';
   /** Empty means all lanes. */
   lanes: string[];
+  /** Run environments to keep; empty means all. NO_ENVIRONMENT stands for runs that report none. */
+  environments: string[];
 }
+
+/** Filter value for runs whose reporter options set no environment. */
+export const NO_ENVIRONMENT = '(none)';
 
 export interface NavApi {
   href(page: string, params?: RouteParams): string;

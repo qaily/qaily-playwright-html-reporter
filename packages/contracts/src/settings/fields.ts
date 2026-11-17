@@ -44,7 +44,19 @@ const lane = z
     id: z.string().min(1),
     label: z.string().min(1),
     match: z
-      .object({ category: z.string().optional(), environment: z.string().optional(), branch: z.string().optional() })
+      .object({
+        category: z.string().optional(),
+        environment: z.string().optional(),
+        branch: z.string().optional(),
+        time: z
+          .object({
+            from: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM'),
+            to: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM'),
+            zone: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+      })
       .strict(),
   })
   .strict();
@@ -58,7 +70,7 @@ const coverageRule = z
 export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'thresholds', label: 'Health thresholds', help: 'When metrics turn green, yellow or red. Bands are checked top to bottom; the first match wins.' },
   { id: 'metrics', label: 'Metrics' },
-  { id: 'lanes', label: 'Lanes', help: 'How runs are grouped on dashboards. The first matching lane wins.' },
+  { id: 'lanes', label: 'Lanes', help: 'How runs (not single tests) are grouped on Monitoring and the other dashboards. Each run joins the first lane it matches.' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'data', label: 'Data' },
   { id: 'connections', label: 'Connections', help: 'Non-secret connection settings. Tokens are stored separately and never shared.' },
@@ -87,7 +99,7 @@ export const SETTINGS_FIELDS: FieldDef[] = [
   bool('metrics.excludeSkipped', 'metrics', 'Leave skipped tests out of the pass rate', 'both'),
 
   { path: 'lanes', group: 'lanes', label: 'Lanes', scope: 'team', editor: { kind: 'lanes' }, schema: z.array(lane).min(1),
-    help: 'Category and branch are regular expressions; environment is an exact match. Empty means "any".' },
+    help: 'Each lane picks runs by the run\'s category and environment (both reporter options in playwright.config.ts) and its git branch. Values are suggested from your recent runs.' },
 
   { path: 'display.theme', group: 'appearance', label: 'Theme', scope: 'both', editor: { kind: 'theme' }, schema: z.string().min(1) },
   { path: 'display.colorScheme', group: 'appearance', label: 'Colour scheme', scope: 'personal', schema: z.enum(['auto', 'light', 'dark']),

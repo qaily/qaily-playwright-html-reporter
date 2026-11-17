@@ -1,8 +1,8 @@
 import type { HealthLevel, PageContext, PeriodDay, PeriodKpis, PeriodRun, RouteParams, RunRow, TestStat } from '@qaily/contracts';
 import {
   addDays,
-  branchMatches,
   buildPeriodDays,
+  runPassesFilters,
   dayKey,
   dayParts,
   groupByLane,
@@ -104,7 +104,7 @@ export async function loadMonthly(ctx: PageContext, params: RouteParams): Promis
     data.runs({ from: monthStart(firstKey), to: monthStart(lastKey + 1) }),
     loadTopTests(ctx, start, end),
   ]);
-  const visible = allRuns.filter((r) => branchMatches(r.branch, filters, settings));
+  const visible = allRuns.filter((r) => runPassesFilters(r, filters, settings));
   const runs = visible.filter((r) => new Date(r.started_at) >= start && new Date(r.started_at) < end);
   const finished = runs.filter((r) => r.ended_at);
 

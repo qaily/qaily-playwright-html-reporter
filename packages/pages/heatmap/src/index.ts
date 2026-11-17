@@ -9,7 +9,7 @@ export default definePage<HeatmapModel>({
   icon: 'grid',
   order: 60,
   contractVersion: PAGE_CONTRACT_VERSION,
-  filters: ['rangeDays', 'branch'],
+  filters: ['rangeDays', 'branch', 'lanes', 'environments'],
   load: (ctx, params) => loadHeatmap(ctx, params),
   views: {
     classic: () => import('./classic-view.ts').then((m) => m.default),

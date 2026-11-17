@@ -1,6 +1,5 @@
 import type { DateRange, ErrorType, PageContext, RouteParams, RunRow, TestStatus } from '@qaily/contracts';
-import { laneOf } from '@qaily/contracts';
-import { addDays, branchMatches, dayKey, rangeFromDays, startOfDay } from '@qaily/core';
+import { addDays, dayKey, hasRunFilters, rangeFromDays, runPassesFilters, startOfDay } from '@qaily/core';
 
 export interface Occurrence {
   run_id: string;
@@ -62,7 +61,7 @@ const q = (s: string) => `'${s.replaceAll("'", "''")}'`;
 export async function loadIssues(ctx: PageContext, params: RouteParams, signal: AbortSignal): Promise<IssuesModel> {
   const { settings, filters, data } = ctx;
   const window = rangeFromDays(filters.rangeDays, ctx.now());
-  const runs = (await data.runs(window)).filter((r) => branchMatches(r.branch, filters, settings));
+  const runs = (await data.runs(window)).filter((r) => runPassesFilters(r, filters, settings));
 
   let run: RunRow | null = null;
   let range: DateRange = window;
@@ -91,8 +90,10 @@ export async function loadIssues(ctx: PageContext, params: RouteParams, signal: 
   );
   if (signal.aborted) throw new Error('aborted');
 
-  const lanes = filters.lanes;
-  const kept = lanes.length ? rows.filter((r) => lanes.includes(laneOf(settings.lanes, r)?.id ?? '')) : rows;
+  // Lane and environment filters are decided per run (lanes can have time windows), so keep the failures of the
+  // runs that passed them. A single run that was asked for by link is shown whatever the filters say.
+  const allowed = new Set(runs.map((r) => r.run_id));
+  const kept = run || !hasRunFilters(filters) ? rows : rows.filter((r) => allowed.has(r.run_id));
 
   // Day buckets for the per-issue bars (range scope only).
   const days: string[] = [];
