@@ -6,6 +6,8 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+## [1.0.1-beta.6] - 2026-11-17
+
 ### Fixed
 
 - `qaily-report show` / `serve`: attachments from the bucket are streamed through the local server instead of a redirect
@@ -89,7 +91,8 @@ First version on npm.
 - `expire-attachments --older-than <days>` deletes the attachments of old runs and keeps the rest of each run folder;
   `--all-versions` also removes old versions in a versioned bucket.
 
-[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.5...HEAD
+[Unreleased]: https://github.com/qaily/qaily-playwright-html-reporter/compare/v1.0.1-beta.6...HEAD
+[1.0.1-beta.6]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.6
 [1.0.1-beta.5]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.5
 [1.0.1-beta.4]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.4
 [1.0.1-beta.3]: https://github.com/qaily/qaily-playwright-html-reporter/releases/tag/v1.0.1-beta.3
