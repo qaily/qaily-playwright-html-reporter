@@ -4,6 +4,8 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { artifactKey } from '@qaily/artifacts';
 import { addToAiIndex, attachmentCheckOf, parseAiRecord, parseAiRecordPath, type AiIndex } from '@qaily/contracts';
 import { LocalSigner, readS3Config } from './s3-signer.ts';
@@ -122,6 +124,57 @@ function sendFile(req: IncomingMessage, res: ServerResponse, file: string, downl
   else createReadStream(file).pipe(res);
 }
 
+/** Response headers passed on from the bucket. Not CORP or CORS: this server's origin replaces the bucket's. */
+const PROXIED_HEADERS = ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified'];
+
+/**
+ * Streams a bucket file through this server, so the page reads it from its own origin. A redirect would hand the
+ * browser the bucket's response, and with it the bucket's CORS rules and Cross-Origin-Resource-Policy (Dell ECS sends
+ * `same-origin`, which blocks images on any other origin).
+ */
+async function proxyFromStorage(req: IncomingMessage, res: ServerResponse, signed: string, path: string, downloadName?: string): Promise<void> {
+  const ctrl = new AbortController();
+  res.on('close', () => ctrl.abort());
+  const forward: Record<string, string> = {};
+  for (const name of ['range', 'if-none-match', 'if-range'] as const) {
+    const value = req.headers[name];
+    if (typeof value === 'string') forward[name] = value;
+  }
+  const upstream = await fetch(signed, { method: req.method === 'HEAD' ? 'HEAD' : 'GET', headers: forward, signal: ctrl.signal });
+
+  if (upstream.status !== 200 && upstream.status !== 206 && upstream.status !== 304 && upstream.status !== 416) {
+    await upstream.body?.cancel();
+    const error =
+      upstream.status === 404 ? 'Not in the bucket: removed by retention, or never uploaded.'
+      : upstream.status === 403 ? 'The bucket refused access (403). The AWS login may lack s3:GetObject on this prefix, or have expired.'
+      : `The bucket answered ${upstream.status}.`;
+    return sendJson(res, upstream.status === 404 || upstream.status === 403 ? upstream.status : 502, { error });
+  }
+
+  const headers: Record<string, string> = { 'Cache-Control': 'private, no-cache' };
+  for (const name of PROXIED_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value !== null) headers[name] = value;
+  }
+  // Storage often keeps no type, or a generic one; the extension is a better guess for images and videos.
+  const type = upstream.headers.get('content-type');
+  headers['content-type'] = type && type !== 'application/octet-stream' && type !== 'binary/octet-stream' ? type : (MIME[extname(path)] ?? 'application/octet-stream');
+  // fetch() decodes a compressed body, so its length would no longer match.
+  if (upstream.headers.get('content-encoding')) delete headers['content-length'];
+  if (downloadName) headers['content-disposition'] = `attachment; filename="${downloadName.replace(/["\\\r\n]/g, '_')}"`;
+  // Lets trace.playwright.dev load a trace from this server ("Trace viewer" button). Only that origin.
+  if (req.headers.origin === TRACE_VIEWER_ORIGIN) headers['access-control-allow-origin'] = TRACE_VIEWER_ORIGIN;
+
+  res.writeHead(upstream.status, headers);
+  if (!upstream.body || req.method === 'HEAD' || upstream.status === 304) {
+    res.end();
+    return;
+  }
+  await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream), res).catch(() => {
+    // The browser went away mid-download (a closed tab, a skipped video); nothing to answer.
+  });
+}
+
 async function readBody(req: IncomingMessage, limit: number): Promise<string> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -200,13 +253,12 @@ export function createHandler(opts: HandlerOptions) {
           const status = await fetchStatus(signed).then(attachmentCheckOf, () => 'unknown' as const);
           return sendJson(res, 200, { status });
         }
-        const headers: Record<string, string> = { Location: signed, 'Cache-Control': 'no-store' };
-        if (req.headers.origin === TRACE_VIEWER_ORIGIN) headers['Access-Control-Allow-Origin'] = TRACE_VIEWER_ORIGIN;
-        res.writeHead(302, headers);
-        res.end();
-        return;
+        return await proxyFromStorage(req, res, signed, relPath, download);
       } catch (err) {
-        return sendJson(res, 502, { error: `Could not sign the S3 URL: ${err instanceof Error ? err.message : err}` });
+        if (res.headersSent) return void res.destroy();
+        // fetch() says only "fetch failed"; the cause has the reason (an untrusted certificate, a refused connection).
+        const cause = err instanceof Error && err.cause instanceof Error ? `: ${err.cause.message}` : '';
+        return sendJson(res, 502, { error: `Could not read from the bucket: ${err instanceof Error ? err.message : err}${cause}` });
       }
     }
 

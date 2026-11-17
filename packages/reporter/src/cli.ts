@@ -46,8 +46,8 @@ Notes
   also uploads <data folder>/settings.json, without the bucket connection, as team-settings.json when there is none yet
   (seed); replace overwrites it.
   expire-attachments deletes <prefix>/<run>/attachments/ of runs whose attachments are all older than <days>.
-  serve signs bucket links with this machine's AWS login (env keys, else --aws-profile, else the default profile), and
-  provides Playwright's trace viewer at /trace/ when run where Playwright is installed.`;
+  serve reads bucket attachments with this machine's AWS login (env keys, else --aws-profile, else the default profile)
+  and passes them to the page from its own address, and provides Playwright's trace viewer at /trace/ when run where Playwright is installed.`;
 
 /** The built report: inside the npm package (next to dist/), else a checkout's build output. */
 function defaultAppDir(): string | undefined {

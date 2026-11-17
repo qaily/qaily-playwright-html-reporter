@@ -49,7 +49,7 @@ signs depends on where the report runs:
 
 | Where | Who signs | Credentials |
 |---|---|---|
-| `qaily-report show` / `serve` | The local server | This machine's AWS CLI login. Never sent to the browser |
+| `qaily-report show` / `serve` | The local server, which also reads the file and passes it to the page | This machine's AWS CLI login. Never sent to the browser |
 | GitHub Pages or any static host | The page | Pasted by each viewer in Settings → Tokens |
 | No bucket configured | Nobody | Attachments are read from the site itself |
 
@@ -99,7 +99,8 @@ Notes per provider:
   CI runner inside that network (a self-hosted runner).
 - **Internal certificates:** if the storage uses a certificate from your company's CA, point the tools at it instead of
   turning verification off: `AWS_CA_BUNDLE=/path/to/ca.pem` for the AWS CLI, and `NODE_EXTRA_CA_CERTS=/path/to/ca.pem` for
-  `qaily-report`. Browsers must trust it too (usually already the case on company machines).
+  `qaily-report` (`show` and `serve` read attachments with it). Browsers must trust it too for the report on a site
+(usually already the case on company machines).
 
 ## 3. CORS
 
@@ -111,7 +112,7 @@ A browser lets the report read a file from another site only when that site's CO
 | Viewing a text attachment, the "no longer in storage" check, the self-hosted trace viewer | Yes |
 | **Save to bucket** (team settings) | Yes, with `PUT` |
 | Screenshots in the page, **Download**, opening a file in a new tab | No (except on storage that sends `Cross-Origin-Resource-Policy`, such as Dell ECS) |
-| `qaily-report show` / `serve` | No: the local server reads the bucket |
+| `qaily-report show` / `serve` | No: the local server reads the bucket and serves each file from its own address |
 
 Allow your site's origin (scheme and host, no path), for example `https://<org>.github.io`. Add
 `https://trace.playwright.dev` only if you don't [host the trace viewer yourself](#10-self-hosted-trace-viewer).

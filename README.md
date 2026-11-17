@@ -137,8 +137,9 @@ npx qaily-report show --pull --aws-profile qaily
 - **Not both:** pull, then sync, is what CI does in mode 3 to keep history and add the newest runs. To look at the
   report, one is enough, so `show` refuses both together.
 
-Screenshots and traces stay in the bucket: the local server signs links to them with your login, which never reaches
-the browser. The bucket needs no CORS rules for this.
+Screenshots and traces stay in the bucket: the local server reads them with your login, which never reaches the
+browser, and passes them to the page from its own address. The bucket needs no CORS rules or bridge for this, on any
+provider.
 
 **Without tests:** `npx qaily-report demo && npx qaily-report serve` shows 120 synthetic runs.
 

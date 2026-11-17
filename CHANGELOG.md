@@ -6,6 +6,13 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Fixed
+
+- `qaily-report show` / `serve`: attachments from the bucket are streamed through the local server instead of a redirect
+  to a signed URL. Images from Dell ECS, which sends `Cross-Origin-Resource-Policy: same-origin`, no longer fail with
+  `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`, and text attachments and the local trace viewer need no CORS rules on the
+  bucket. Storage with a company certificate now needs `NODE_EXTRA_CA_CERTS` for these commands too.
+
 ## [1.0.1-beta.5] - 2026-11-16
 
 ### Added

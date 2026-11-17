@@ -94,16 +94,100 @@ describe('artifact route', () => {
     expect(await res.text()).toBe('png');
   });
 
-  it('redirects to a presigned S3 URL otherwise, signing once with the AWS CLI login', async () => {
-    const res = await get('run=run1&path=attachments/trace.zip&download=trace.zip');
-    expect(res.status).toBe(302);
-    const loc = new URL(res.headers.get('location')!);
-    expect(loc.origin).toBe('https://acme-pw.s3.eu-north-1.amazonaws.com');
-    expect(loc.pathname).toBe('/jsonl-report/run1/attachments/trace.zip');
-    expect(loc.searchParams.get('X-Amz-Security-Token')).toBe('tok');
-    expect(loc.searchParams.get('response-content-disposition')).toContain('trace.zip');
-    await get('run=run1&path=attachments/other.zip');
-    expect(execCalls).toEqual([['configure', 'export-credentials', '--format', 'process']]);
+  /** Stands in for the bucket: records each signed request and answers with `answer`. */
+  const stubBucket = (answer: (url: URL, init?: RequestInit) => Response) => {
+    const realFetch = globalThis.fetch;
+    const asked: { url: URL; headers: Headers; method: string }[] = [];
+    vi.stubGlobal('fetch', (input: string | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (!url.hostname.startsWith('acme-pw.s3.')) return realFetch(input, init);
+      asked.push({ url, headers: new Headers(init?.headers), method: init?.method ?? 'GET' });
+      return Promise.resolve(answer(url, init));
+    });
+    return asked;
+  };
+
+  it('streams a bucket file through this origin, signing once with the AWS CLI login', async () => {
+    const asked = stubBucket(() =>
+      new Response('zipbytes', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Length': '8',
+          ETag: '"abc"',
+          // What Dell ECS sends; a redirect would hand it to the browser and block images.
+          'Cross-Origin-Resource-Policy': 'same-origin',
+          'Access-Control-Allow-Origin': 'https://elsewhere.example',
+        },
+      }),
+    );
+    try {
+      const res = await get('run=run1&path=attachments/trace.zip&download=trace.zip');
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('zipbytes');
+      expect(res.headers.get('content-type')).toBe('application/zip');
+      expect(res.headers.get('etag')).toBe('"abc"');
+      expect(res.headers.get('content-disposition')).toBe('attachment; filename="trace.zip"');
+      expect(res.headers.get('cross-origin-resource-policy')).toBeNull();
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
+      expect(res.headers.get('location')).toBeNull();
+
+      const signed = asked[0].url;
+      expect(signed.origin).toBe('https://acme-pw.s3.eu-north-1.amazonaws.com');
+      expect(signed.pathname).toBe('/jsonl-report/run1/attachments/trace.zip');
+      expect(signed.searchParams.get('X-Amz-Security-Token')).toBe('tok');
+
+      await get('run=run1&path=attachments/other.zip');
+      expect(execCalls).toEqual([['configure', 'export-credentials', '--format', 'process']]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('passes ranges and revalidation through, and guesses a missing image type from the extension', async () => {
+    const asked = stubBucket((_url, init) => {
+      const h = new Headers(init?.headers);
+      if (h.get('if-none-match') === '"v1"') return new Response(null, { status: 304, headers: { ETag: '"v1"' } });
+      return new Response('pn', { status: 206, headers: { 'Content-Type': 'binary/octet-stream', 'Content-Range': 'bytes 0-1/3', 'Content-Length': '2' } });
+    });
+    try {
+      const part = await get('run=run1&path=attachments/remote.png', { Range: 'bytes=0-1' });
+      expect(part.status).toBe(206);
+      expect(part.headers.get('content-range')).toBe('bytes 0-1/3');
+      expect(part.headers.get('content-type')).toBe('image/png');
+      expect(await part.text()).toBe('pn');
+      expect(asked[0].headers.get('range')).toBe('bytes=0-1');
+
+      const same = await get('run=run1&path=attachments/remote.png', { 'If-None-Match': '"v1"' });
+      expect(same.status).toBe(304);
+
+      const head = await fetch(`${base2}/__qaily/artifact?run=run1&path=attachments/remote.png`, { method: 'HEAD' });
+      expect(head.status).toBe(206);
+      expect(asked.at(-1)!.method).toBe('HEAD');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('explains bucket refusals, and network failures with their cause', async () => {
+    stubBucket((url) => {
+      if (url.pathname.endsWith('gone.png')) return new Response('<Error/>', { status: 404 });
+      if (url.pathname.endsWith('denied.png')) return new Response('<Error/>', { status: 403 });
+      throw new TypeError('fetch failed', { cause: new Error('unable to verify the first certificate') });
+    });
+    try {
+      const gone = await get('run=run1&path=attachments/gone.png');
+      expect(gone.status).toBe(404);
+      expect((await gone.json()).error).toContain('removed by retention');
+      const denied = await get('run=run1&path=attachments/denied.png');
+      expect(denied.status).toBe(403);
+      expect((await denied.json()).error).toContain('s3:GetObject');
+      const broken = await get('run=run1&path=attachments/tls.png');
+      expect(broken.status).toBe(502);
+      expect((await broken.json()).error).toContain('unable to verify the first certificate');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('checks whether a file is still in the bucket, without redirecting', async () => {
@@ -129,9 +213,14 @@ describe('artifact route', () => {
     expect((await get('run=run1&path=attachments/../../secret')).status).toBe(400);
     expect((await get('run=../x&path=a')).status).toBe(400);
     expect((await get('run=run1&path=attachments/shot.png', { 'Sec-Fetch-Site': 'cross-site' })).status).toBe(403);
-    const trace = await get('run=run1&path=attachments/t.zip', { 'Sec-Fetch-Site': 'cross-site', Origin: 'https://trace.playwright.dev' });
-    expect(trace.status).toBe(302);
-    expect(trace.headers.get('access-control-allow-origin')).toBe('https://trace.playwright.dev');
+    stubBucket(() => new Response('zip', { status: 200 }));
+    try {
+      const trace = await get('run=run1&path=attachments/t.zip', { 'Sec-Fetch-Site': 'cross-site', Origin: 'https://trace.playwright.dev' });
+      expect(trace.status).toBe(200);
+      expect(trace.headers.get('access-control-allow-origin')).toBe('https://trace.playwright.dev');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('reports signer status without exposing credentials', async () => {
