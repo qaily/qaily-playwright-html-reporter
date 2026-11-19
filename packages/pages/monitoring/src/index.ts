@@ -10,6 +10,8 @@ export default definePage<MonitoringModel>({
   order: 10,
   contractVersion: PAGE_CONTRACT_VERSION,
   filters: ['rangeDays', 'branch'],
+  // Monitoring shows the latest run per lane, so it looks back further than the site's default (Today).
+  defaultRangeDays: 14,
   load: (ctx) => loadMonitoring(ctx),
   views: {
     classic: () => import('./classic-view.ts').then((m) => m.default),

@@ -1,4 +1,4 @@
-import { LOCATION_PATHS, NO_ENVIRONMENT, type Catalog, type LocationKey, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type ThemeInfo } from '@qaily/contracts';
+import { LOCATION_PATHS, NO_ENVIRONMENT, RANGE_TODAY, rangeLabel, type Catalog, type LocationKey, type Filters, type PageContext, type RegistryInfo, type ResolvedSettings, type RouteParams, type ThemeInfo } from '@qaily/contracts';
 import {
   DataAccessError,
   FILTER_PARAMS,
@@ -8,6 +8,7 @@ import {
   formatHash,
   formatRelative,
   healthLevel,
+  pageFilters,
   rangeFromDays,
   type DataService,
   type Route,
@@ -46,7 +47,7 @@ interface Toast {
   kind: 'info' | 'error';
 }
 
-const RANGE_OPTIONS = [1, 7, 14, 30, 90];
+const RANGE_OPTIONS = [RANGE_TODAY, 1, 7, 14, 30, 90];
 
 export class QailyShell extends LitElement {
   static properties = {
@@ -247,13 +248,20 @@ export class QailyShell extends LitElement {
     const entry = PAGES.find((p) => p.id === this.pageId);
     if (!entry) return this.pageHost.showMissing(this.pageId);
     document.title = `${entry.title} · Qaily`;
-    void this.pageHost.show(entry, this.pageParams, this.context(), quiet);
+    void this.pageHost.show(entry, this.pageParams, this.context(), quiet, this.route.params.range !== undefined);
   }
 
   private setFilters(patch: Partial<Filters>): void {
     const s = this.settingsNow;
     const next = { ...this.filters, ...patch };
-    this.services.router.go(this.pageId, { ...this.pageParams, ...filtersToParams(next, s) });
+    const params = filtersToParams(next, s);
+    // A range picked on a page with its own default (Monitoring) must stay in the URL even when it equals the
+    // site default, or the page would fall back to its own default.
+    const pageDefault = this.host.page?.defaultRangeDays;
+    if (patch.rangeDays !== undefined && params.range === undefined && pageDefault !== undefined && patch.rangeDays !== pageDefault) {
+      params.range = patch.rangeDays === RANGE_TODAY ? 'today' : String(patch.rangeDays);
+    }
+    this.services.router.go(this.pageId, { ...this.pageParams, ...params });
   }
 
   notify(message: string, kind: 'info' | 'error' = 'info'): void {
@@ -308,7 +316,9 @@ export class QailyShell extends LitElement {
   render() {
     const used = new Set(this.host.page?.filters ?? []);
     const filters = this.filters;
-    if (used.has('environments')) this.loadEnvOptions(filters.rangeDays);
+    // The range this page actually uses (Monitoring has its own default until a range is picked).
+    const shownRange = pageFilters(filters, this.host.page, this.route.params.range !== undefined).rangeDays;
+    if (used.has('environments')) this.loadEnvOptions(shownRange);
     const keep = filtersToParams(filters, this.settingsNow);
     const forced = this.services.themes.theme(this.settingsNow.display.theme).forcedColorScheme;
     return html`
@@ -342,9 +352,9 @@ export class QailyShell extends LitElement {
               ? html`<label
                   >Range
                   <select @change=${(e: Event) => this.setFilters({ rangeDays: Number((e.target as HTMLSelectElement).value) })}>
-                    ${[...new Set([...RANGE_OPTIONS, filters.rangeDays])]
+                    ${[...new Set([...RANGE_OPTIONS, shownRange])]
                       .sort((a, b) => a - b)
-                      .map((d) => html`<option value=${d} ?selected=${d === filters.rangeDays}>${d === 1 ? '24 hours' : `${d} days`}</option>`)}
+                      .map((d) => html`<option value=${d} ?selected=${d === shownRange}>${rangeLabel(d)}</option>`)}
                   </select></label
                 >`
               : nothing}

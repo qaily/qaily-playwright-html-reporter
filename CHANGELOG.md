@@ -6,6 +6,20 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 
 ## [Unreleased]
 
+### Added
+
+- **Today** in the Range filter: since midnight in the display time zone (`?range=today`).
+- Tests has a Scope like Issues and opens on **All runs in range**:
+  - every test of every matching run on one page, grouped by spec, counted by its worst result;
+  - a dot per run on each test;
+  - clicking a test opens its full details in its newest failing run, with a Run picker (and the dots) to switch
+    between its runs.
+
+### Changed
+
+- The default date range is now Today, and the setting is a dropdown. Monitoring keeps 14 days until a range is picked.
+- Tests opens on all runs in range instead of the newest run. Links to a run (`?run=…`) open that run as before.
+
 ## [1.0.1-beta.7] - 2026-11-17
 
 ### Added

@@ -88,7 +88,7 @@ function sum(ctx: PageContext, list: (CellStat | undefined)[]): CellStat | undef
 
 export async function loadHeatmap(ctx: PageContext, params: RouteParams): Promise<HeatmapModel> {
   const { settings, filters, data } = ctx;
-  const window = rangeFromDays(filters.rangeDays, ctx.now());
+  const window = rangeFromDays(filters.rangeDays, ctx.now(), settings);
   const runs = (await data.runs(window)).filter((r) => runPassesFilters(r, filters, settings));
   let run: RunRow | null = null;
   let range = window;

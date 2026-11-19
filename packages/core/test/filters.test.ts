@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, NO_ENVIRONMENT, type Filters, type Lane, type RunRow, type Settings } from '@qaily/contracts';
-import { filtersFromParams, filtersToParams, pageFilters, runIdsSql, runPassesFilters } from '../src/filters.ts';
+import { DEFAULT_SETTINGS, NO_ENVIRONMENT, RANGE_TODAY, rangeLabel, type Filters, type Lane, type RunRow, type Settings } from '@qaily/contracts';
+import { filtersFromParams, filtersToParams, pageFilters, rangeFromDays, runIdsSql, runPassesFilters } from '../src/filters.ts';
 import { loadDayProblems, loadTopTests } from '../src/period.ts';
 
 const lanes: Lane[] = [
@@ -72,8 +72,34 @@ describe('runPassesFilters', () => {
 describe('pageFilters', () => {
   it('drops lane and environment filters a page does not declare', () => {
     const f = { ...base, lanes: ['web'], environments: ['dev'] };
-    expect(pageFilters(f, ['rangeDays', 'branch'])).toEqual({ ...f, lanes: [], environments: [] });
-    expect(pageFilters(f, ['branch', 'lanes', 'environments'])).toEqual(f);
+    expect(pageFilters(f, { filters: ['rangeDays', 'branch'] })).toEqual({ ...f, lanes: [], environments: [] });
+    expect(pageFilters(f, { filters: ['branch', 'lanes', 'environments'] })).toEqual(f);
+  });
+  it("uses the page's own default range only while none is picked", () => {
+    const today = { ...base, rangeDays: RANGE_TODAY };
+    const monitoring = { filters: ['rangeDays', 'branch'] as (keyof Filters)[], defaultRangeDays: 14 };
+    expect(pageFilters(today, monitoring, false).rangeDays).toBe(14);
+    expect(pageFilters(today, monitoring, true).rangeDays).toBe(RANGE_TODAY);
+    expect(pageFilters(today, { filters: ['rangeDays'] }, false).rangeDays).toBe(RANGE_TODAY);
+  });
+});
+
+describe('Today range', () => {
+  const utc: Settings = { ...settings, display: { ...settings.display, timeZone: 'UTC' } };
+  it('is the default and round-trips as range=today', () => {
+    expect(filtersFromParams({}, DEFAULT_SETTINGS).rangeDays).toBe(RANGE_TODAY);
+    const week = { ...DEFAULT_SETTINGS, display: { ...DEFAULT_SETTINGS.display, defaultRangeDays: 7 } };
+    expect(filtersFromParams({ range: 'today' }, week).rangeDays).toBe(RANGE_TODAY);
+    expect(filtersToParams({ ...base, rangeDays: RANGE_TODAY }, week)).toMatchObject({ range: 'today' });
+    expect(filtersFromParams({ range: 'nonsense' }, week).rangeDays).toBe(7);
+  });
+  it('starts at midnight in the display time zone', () => {
+    const r = rangeFromDays(RANGE_TODAY, new Date('2026-11-18T09:30:00Z'), utc);
+    expect(r.from.toISOString()).toBe('2026-11-18T00:00:00.000Z');
+    expect(r.to.getTime()).toBe(Date.parse('2026-11-18T09:30:00Z') + 1);
+  });
+  it('is labelled for the Range dropdown', () => {
+    expect([RANGE_TODAY, 1, 7].map(rangeLabel)).toEqual(['Today', 'Last 24 hours', 'Last 7 days']);
   });
 });
 

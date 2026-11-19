@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, healthLevel, type Filters, type RunRow } from '@qaily/contracts';
-import { commonDirPrefix, groupsFromFullTitle, loadTests } from '../src/model.ts';
+import {
+  MAX_EXECUTIONS,
+  commonDirPrefix,
+  groupsFromFullTitle,
+  loadTests,
+  rangeSql,
+  type RangeExecution,
+  type RangeRow,
+} from '../src/model.ts';
 
 describe('loadTests with lane and environment filters', () => {
   const run = (id: string, started_at: string, environment: string): RunRow => ({
@@ -33,22 +41,62 @@ describe('loadTests with lane and environment filters', () => {
         runs: async () => runs,
         run: async (id: string) => runs.find((r) => r.run_id === id) ?? null,
         runDetail: async () => ({ summaries: [], details: [], errors: [], attachments: [] }),
+        query: async (sql: string) => {
+          queries.push(sql);
+          return rangeRows;
+        },
       },
     }) as never;
+  const queries: string[] = [];
+  const exec = (run_id: string, status: string, started_ms: number) =>
+    ({ run_id, status, started_ms, dur_ms: 1000, err_summary: status === 'failed' ? 'boom' : null, failed_step: null, attempts: 1 }) as RangeExecution;
+  const rangeRows: RangeRow[] = [
+    { test_id: 'a', title: 'Login', file: '/ci/e2e/auth/login.spec.ts', project: 'chromium', tags: ['smoke'], total: 2, failed: 1, flaky: 0, passed: 1, skipped: 0,
+      executions: [exec('staging-2', 'failed', 2), exec('dev-1', 'passed', 1)] },
+    { test_id: 'b', title: 'Logout', file: '/ci/e2e/auth/login.spec.ts', project: 'chromium', tags: null, total: 2, failed: 0, flaky: 1, passed: 1, skipped: 0,
+      executions: [exec('staging-2', 'flaky', 2), exec('dev-1', 'passed', 1)] },
+    { test_id: 'c', title: 'Search', file: '/ci/e2e/search.spec.ts', project: 'chromium', tags: null, total: 2, failed: 0, flaky: 0, passed: 2, skipped: 0,
+      executions: [exec('staging-2', 'passed', 2), exec('dev-1', 'passed', 1)] },
+  ];
 
-  it('offers only matching runs and opens the newest of them', async () => {
+  it('shows all runs in range by default, limited to the filters', async () => {
+    queries.length = 0;
     const m = await loadTests(ctx({ environments: ['dev'] }), {});
+    expect(m.scope).toBe('range');
+    expect(m.current).toBeNull();
     expect(m.runs.map((o) => o.run.run_id)).toEqual(['dev-1']);
-    expect(m.current?.run.run_id).toBe('dev-1');
-    expect((await loadTests(ctx({ lanes: ['web-staging'] }), {})).current?.run.run_id).toBe('staging-2');
+    expect(queries[0]).toContain("run_id IN ('dev-1')");
   });
 
-  it('has no run when nothing matches', async () => {
-    expect((await loadTests(ctx({ environments: ['prod'] }), {})).current).toBeNull();
+  it('groups the range by spec and counts each test by its worst result', async () => {
+    const range = (await loadTests(ctx({}), {})).range!;
+    expect(range.counts).toEqual({ failed: 1, flaky: 1, passed: 1, skipped: 0 });
+    expect(range.specs.map((s) => s.spec)).toEqual(['auth/login.spec.ts', 'search.spec.ts']);
+    expect(range.specs[0].tests.map((t) => [t.title, t.worst])).toEqual([['Login', 'failed'], ['Logout', 'flaky']]);
+    expect(range.specs[0].tests[0].executions[0]).toMatchObject({ run_id: 'staging-2', status: 'failed', err_summary: 'boom' });
   });
 
-  it('still opens a run linked directly, whatever the filters', async () => {
-    expect((await loadTests(ctx({ environments: ['dev'] }), { run: 'staging-2' })).current?.run.run_id).toBe('staging-2');
+  it('has no runs and does not query when nothing matches', async () => {
+    queries.length = 0;
+    const m = await loadTests(ctx({ environments: ['prod'] }), {});
+    expect(m.runs).toEqual([]);
+    expect(m.range?.tests).toEqual([]);
+    expect(queries).toEqual([]);
+  });
+
+  it('opens one run when asked, even outside the filters', async () => {
+    const m = await loadTests(ctx({ environments: ['dev'] }), { run: 'staging-2' });
+    expect(m.scope).toBe('run');
+    expect(m.current?.run.run_id).toBe('staging-2');
+  });
+});
+
+describe('rangeSql', () => {
+  it('limits rows to the runs and the range, newest executions first', () => {
+    const sql = rangeSql(["r'1", 'r2'], { from: new Date(1000), to: new Date(2000) });
+    expect(sql).toContain("run_id IN ('r''1', 'r2')");
+    expect(sql).toContain('epoch_ms(started_at) >= 1000 AND epoch_ms(started_at) < 2000');
+    expect(sql).toContain(`ORDER BY started_at DESC)[1:${MAX_EXECUTIONS}]`);
   });
 });
 

@@ -54,7 +54,8 @@ export const DEFAULT_SETTINGS: Settings = {
     colorScheme: 'auto',
     views: {},
     defaultPage: 'monitoring',
-    defaultRangeDays: 14,
+    // 0 = Today (since midnight). Monitoring keeps 14 days unless a range is picked (its page default).
+    defaultRangeDays: 0,
     weekStartsOn: 1,
     timeZone: 'local',
     refreshSeconds: 60,

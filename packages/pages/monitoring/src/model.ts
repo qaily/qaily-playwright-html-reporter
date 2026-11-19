@@ -38,7 +38,7 @@ export function runCard(run: RunRow, ctx: PageContext, laneId: string | null = n
 export async function loadMonitoring(ctx: PageContext): Promise<MonitoringModel> {
   const { settings, filters } = ctx;
   const [all, aiRuns] = await Promise.all([
-    ctx.data.runs(rangeFromDays(filters.rangeDays, ctx.now())),
+    ctx.data.runs(rangeFromDays(filters.rangeDays, ctx.now(), settings)),
     ctx.ai.runsWithResults().catch(() => new Set<string>()),
   ]);
   const runs = all.filter((r) => branchMatches(r.branch, filters, settings));

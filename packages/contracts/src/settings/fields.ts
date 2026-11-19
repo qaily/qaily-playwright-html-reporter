@@ -2,6 +2,7 @@
 // and resolveSettings() validates stored overrides field by field with these schemas.
 
 import { z } from 'zod';
+import { rangeLabel } from '../page.ts';
 
 export type SettingsScope = 'team' | 'personal' | 'both';
 
@@ -112,7 +113,9 @@ export const SETTINGS_FIELDS: FieldDef[] = [
     editor: { kind: 'select', options: [{ value: 'auto', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }] } },
   { path: 'display.defaultPage', group: 'appearance', label: 'Start page', scope: 'both', editor: { kind: 'page' }, schema: z.string().min(1) },
   { path: 'display.defaultRangeDays', group: 'appearance', label: 'Default date range', scope: 'both',
-    editor: { kind: 'number', min: 1, max: 366, unit: 'days' }, schema: z.number().int().min(1).max(366) },
+    help: 'The Range of Tests, Issues and Heat Map until you pick another. Monitoring defaults to 14 days.',
+    editor: { kind: 'select', options: [0, 1, 3, 7, 14, 30, 90].map((d) => ({ value: d, label: rangeLabel(d) })) },
+    schema: z.number().int().min(0).max(366) },
   { path: 'display.weekStartsOn', group: 'appearance', label: 'Week starts on', scope: 'both', schema: z.union([z.literal(0), z.literal(1)]),
     editor: { kind: 'select', options: [{ value: 1, label: 'Monday' }, { value: 0, label: 'Sunday' }] } },
   { path: 'display.timeZone', group: 'appearance', label: 'Time zone', scope: 'both', schema: z.enum(['local', 'UTC']),

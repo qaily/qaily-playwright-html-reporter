@@ -192,7 +192,7 @@ export interface SecretsApi {
 }
 
 export interface Filters {
-  /** Days back from now. */
+  /** Days back from now. 0 (RANGE_TODAY) means today: since midnight in the display time zone. */
   rangeDays: number;
   /** "main" keeps only data.mainBranches. */
   branch: 'main' | 'all';
@@ -200,6 +200,15 @@ export interface Filters {
   lanes: string[];
   /** Run environments to keep; empty means all. NO_ENVIRONMENT stands for runs that report none. */
   environments: string[];
+}
+
+/** `Filters.rangeDays` value for "Today" (since midnight in the display time zone). */
+export const RANGE_TODAY = 0;
+
+/** "Today", "Last 24 hours", "Last 7 days", … */
+export function rangeLabel(days: number): string {
+  if (days === RANGE_TODAY) return 'Today';
+  return days === 1 ? 'Last 24 hours' : `Last ${days} days`;
 }
 
 /** Filter value for runs whose reporter options set no environment. */
@@ -263,6 +272,8 @@ export interface PageModule<M = unknown> {
   contractVersion: typeof PAGE_CONTRACT_VERSION;
   /** Shell filters this page uses; the filter bar shows only these. Default: none. */
   filters?: Array<keyof Filters>;
+  /** Range for this page while none is picked in the filter bar. Default: the "Default date range" setting. */
+  defaultRangeDays?: number;
   /** Builds the page's view model. Called again when route params, filters or settings change. */
   load(ctx: PageContext, params: RouteParams, signal: AbortSignal): Promise<M>;
   /** 'classic' is required; themes may add more. */

@@ -60,7 +60,7 @@ const q = (s: string) => `'${s.replaceAll("'", "''")}'`;
 
 export async function loadIssues(ctx: PageContext, params: RouteParams, signal: AbortSignal): Promise<IssuesModel> {
   const { settings, filters, data } = ctx;
-  const window = rangeFromDays(filters.rangeDays, ctx.now());
+  const window = rangeFromDays(filters.rangeDays, ctx.now(), settings);
   const runs = (await data.runs(window)).filter((r) => runPassesFilters(r, filters, settings));
 
   let run: RunRow | null = null;

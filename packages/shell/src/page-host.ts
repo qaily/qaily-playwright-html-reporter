@@ -49,7 +49,7 @@ export class PageHost {
    * Shows a page. With quiet = true (background refresh) the current view stays visible
    * while loading, and errors are reported without replacing it.
    */
-  async show(entry: PageEntry, params: RouteParams, ctx: PageContext, quiet = false): Promise<void> {
+  async show(entry: PageEntry, params: RouteParams, ctx: PageContext, quiet = false, rangeChosen = true): Promise<void> {
     const seq = ++this.seq;
     this.abort?.abort();
     const abort = (this.abort = new AbortController());
@@ -60,7 +60,7 @@ export class PageHost {
     try {
       page = await this.module(entry);
       if (seq !== this.seq) return;
-      ctx = { ...ctx, filters: pageFilters(ctx.filters, page.filters) };
+      ctx = { ...ctx, filters: pageFilters(ctx.filters, page, rangeChosen) };
       this.onState({ page, view: this.mounted?.view ?? null, status: 'loading' });
 
       let view = this.themes.resolveView(page, ctx.settings);

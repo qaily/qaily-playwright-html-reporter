@@ -379,6 +379,12 @@ more of each, and only runs that match are counted. They stay in the URL (`?lane
 over when you switch between those pages. Monitoring keeps its own environment chips. A run opened from a link is
 always shown, even when the filters would hide it.
 
+**Range** starts at **Today** (since midnight in the display time zone; change it under Settings → Default date range).
+Monitoring starts at 14 days, so lanes without a run today stay visible. Tests opens on **All runs in range**: every
+test of every matching run on one page, each with a dot per run, so for example Range = Today with Lane = a nightly
+lane shows all of today's nightly results. Click a test for its full details (steps, errors, attachments) in its newest
+failing run, and switch to its other runs with the Run picker or the dots. Scope switches to a single run.
+
 In the settings file the conditions are stored as `match`, with `category` and `branch` as regular expressions:
 
 ```json

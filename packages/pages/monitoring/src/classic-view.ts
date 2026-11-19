@@ -1,4 +1,4 @@
-import type { PageContext } from '@qaily/contracts';
+import { rangeLabel, type PageContext } from '@qaily/contracts';
 import { formatDateTime, formatDuration, formatPercent, formatRelative, formatTime, formatDate } from '@qaily/core';
 import { LitElement, LEVEL_GLYPH, baseStyles, css, elementView, html, nothing, suiteBadge } from '@qaily/ui';
 import type { LaneCard, MonitoringModel, RunCard } from './model.ts';
@@ -59,7 +59,7 @@ class MonitoringClassic extends LitElement {
   render() {
     const m = this.model;
     if (!m.totalRuns) {
-      return html`<q-state kind="empty" message="No runs in the last ${m.rangeDays} day(s) for this branch filter."></q-state>`;
+      return html`<q-state kind="empty" message="No runs (${rangeLabel(m.rangeDays).toLowerCase()}) for this branch filter."></q-state>`;
     }
     return html`<div class="grid">${m.lanes.map((l) => this.lane(l))}</div>`;
   }

@@ -1,4 +1,5 @@
-import { NO_ENVIRONMENT, laneOf, type DateRange, type Filters, type RouteParams, type RunRow, type Settings } from '@qaily/contracts';
+import { NO_ENVIRONMENT, RANGE_TODAY, laneOf, type DateRange, type Filters, type PageModule, type RouteParams, type RunRow, type Settings } from '@qaily/contracts';
+import { startOfDay } from './format.ts';
 
 /** Route params owned by the shell's filter bar. Pages must not reuse these names. */
 export const FILTER_PARAMS = ['range', 'branch', 'lanes', 'env'] as const;
@@ -6,9 +7,9 @@ export const FILTER_PARAMS = ['range', 'branch', 'lanes', 'env'] as const;
 const list = (raw: string | undefined) => (raw ? [...new Set(raw.split(',').filter(Boolean))] : []);
 
 export function filtersFromParams(params: RouteParams, settings: Settings): Filters {
-  const days = Number(params.range);
+  const days = params.range === 'today' ? RANGE_TODAY : Number(params.range);
   return {
-    rangeDays: Number.isInteger(days) && days > 0 && days <= 366 ? days : settings.display.defaultRangeDays,
+    rangeDays: params.range && Number.isInteger(days) && days >= 0 && days <= 366 ? days : settings.display.defaultRangeDays,
     branch: params.branch === 'all' ? 'all' : 'main',
     lanes: list(params.lanes),
     environments: list(params.env),
@@ -17,16 +18,23 @@ export function filtersFromParams(params: RouteParams, settings: Settings): Filt
 
 export function filtersToParams(f: Filters, settings: Settings): RouteParams {
   const p: RouteParams = {};
-  if (f.rangeDays !== settings.display.defaultRangeDays) p.range = String(f.rangeDays);
+  if (f.rangeDays !== settings.display.defaultRangeDays) p.range = f.rangeDays === RANGE_TODAY ? 'today' : String(f.rangeDays);
   if (f.branch !== 'main') p.branch = f.branch;
   if (f.lanes.length) p.lanes = f.lanes.join(',');
   if (f.environments?.length) p.env = f.environments.join(',');
   return p;
 }
 
-/** The last `days` days up to now (exclusive end a millisecond after now). */
-export function rangeFromDays(days: number, now: Date): DateRange {
+/**
+ * The last `days` days up to now (exclusive end a millisecond after now). RANGE_TODAY starts at midnight in the
+ * display time zone, so it needs the settings.
+ */
+export function rangeFromDays(days: number, now: Date, settings?: Settings): DateRange {
   const to = new Date(now.getTime() + 1);
+  if (days === RANGE_TODAY) {
+    const from = settings ? startOfDay(now, settings) : new Date(new Date(now).setHours(0, 0, 0, 0));
+    return { from, to };
+  }
   const from = new Date(now.getTime() - days * 86_400_000);
   return { from, to };
 }
@@ -39,10 +47,16 @@ export function branchMatches(branch: string | null, filters: Filters, settings:
  * The filters a page gets: lane and environment filters only when the page declares them. They stay in the URL
  * while you visit a page without them, but don't quietly filter a page that shows no control for them.
  */
-export function pageFilters(filters: Filters, declared: readonly (keyof Filters)[] | undefined): Filters {
-  const has = new Set(declared ?? []);
+export function pageFilters(
+  filters: Filters,
+  page: Pick<PageModule, 'filters' | 'defaultRangeDays'> | null | undefined,
+  /** Whether the URL picks a range; if not, the page's own default range applies. */
+  rangeChosen = true,
+): Filters {
+  const has = new Set(page?.filters ?? []);
   return {
     ...filters,
+    rangeDays: !rangeChosen && page?.defaultRangeDays !== undefined ? page.defaultRangeDays : filters.rangeDays,
     lanes: has.has('lanes') ? filters.lanes : [],
     environments: has.has('environments') ? filters.environments : [],
   };
