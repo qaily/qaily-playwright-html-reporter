@@ -20,6 +20,11 @@ moves them into the new version's section (see [docs/releasing.md](docs/releasin
 - The default date range is now Today, and the setting is a dropdown. Monitoring keeps 14 days until a range is picked.
 - Tests opens on all runs in range instead of the newest run. Links to a run (`?run=…`) open that run as before.
 
+### Fixed
+
+- Chronoscope theme: status colours on the dial no longer clip to white, and hovering brightens a segment instead of
+  washing the dial out.
+
 ## [1.0.1-beta.7] - 2026-11-17
 
 ### Added
