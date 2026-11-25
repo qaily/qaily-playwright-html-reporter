@@ -175,7 +175,10 @@ void main(){
  float top=step(uH*.98,vL.z);
  float hA=mod(1.5707963-uTime*.8,TAU);
  float sw=exp(-mod(a-hA,TAU)*2.2);
- vec3 col=c*(.26+.44*top+f*.85)*lit+c*sw*.85*lit+vec3(1.)*uHi*.32+vec3(1.)*top*pow(f,4.)*.25;
+ // Kept below 1 at rest so the status colour doesn't clip to white and feed the bloom; hover brightens the colour a
+ // little (plus the lift) instead of adding flat white, which washed the dial out.
+ vec3 col=c*(.2+.3*top+f*.55)*lit+c*sw*.5*lit;
+ col=col*(1.+uHi*.22)+vec3(1.)*(uHi*.05+top*pow(f,4.)*.12);
  gl_FragColor=vec4(col,(.8+.18*top)*uVis);
 }`;
 const PLATE_VS = `varying vec3 vL;varying vec3 vW;void main(){vL=position;vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
